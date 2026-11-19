@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "清单制作工具",
+  "productName": "ProcurementListTool",
   "version": "1.0.0",
   "identifier": "com.procurement.listtool",
   "build": {
@@ -10,12 +10,16 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "清单制作工具",
         "width": 1220,
         "height": 860,
         "minWidth": 900,
         "minHeight": 640,
-        "resizable": true
+        "resizable": true,
+        "center": true,
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {
@@ -24,6 +28,23 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

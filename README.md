@@ -6,8 +6,27 @@
 
 - `src-tauri/src/lib.rs`：Rust 本地持久化与原生文件导出命令（`load_app_data`、`save_app_data`、`get_data_file_path`、`export_file_native`）
 - `src-tauri/src/main.rs`：桌面端入口
-- `src-tauri/tauri.conf.json`：Tauri 2 窗口与打包配置
-- `dist/index.html`：前端单据录入、分页、Excel/PDF 导出界面（已内置 Tauri 原生桥接）
+- `src-tauri/tauri.conf.json`：Tauri 2 窗口与打包配置（`decorations: false`，使用自定义标题栏）
+- `src-tauri/icons/`：应用图标（由 `scripts/make_icons.py` 生成）
+- `dist/index.html`：前端单据录入、分页、Excel/PDF 导出界面（已内置 Tauri 原生桥接与自定义标题栏）
+- `.github/workflows/build-windows.yml`：GitHub Actions 自动编译 Windows exe
+
+## 自定义标题栏
+
+系统标题栏已关闭（`decorations: false`），改由 `dist/index.html` 顶部的 `#app-titlebar` 提供：
+
+- 拖拽移动：`data-tauri-drag-region`（双击空白处由 Tauri 原生切换最大化）
+- 右侧按钮：最小化 / 最大化（还原）/ 关闭，调用 `window.__TAURI__.window` API
+- 仅在桌面端启用（检测到 `window.__TAURI__` 时给 `<body>` 加 `is-tauri`），浏览器打开时自动隐藏
+
+## 在 GitHub 上编译 exe
+
+推送代码到 `main` 分支（或在 Actions 页面手动 `Run workflow`）后，工作流 `Build Windows EXE` 会在 `windows-latest` 上自动编译，产物位于该次运行的 **Artifacts → ProcurementListTool-windows-x64**：
+
+| 文件 | 说明 |
+| --- | --- |
+| `ProcurementListTool.exe` | 免安装单文件，双击即用（依赖系统 WebView2，Win10/11 一般已预装） |
+| `ProcurementListTool_1.0.0_x64-setup.exe` | NSIS 安装包，会创建开始菜单快捷方式 |
 
 ## 本地编译与运行
 

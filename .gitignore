@@ -1,0 +1,22 @@
+# Rust / Tauri 构建产物
+src-tauri/target/
+target/
+out/
+artifact/
+
+# 依赖与临时文件
+node_modules/
+*.log
+*.tmp
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Tauri 自动生成的 ACL 描述文件
+src-tauri/gen/
+
+# 本地工作区记录
+.workbuddy-ai/
