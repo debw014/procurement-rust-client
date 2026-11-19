@@ -52,8 +52,24 @@
       background: transparent;
     }
 
+    /* 内容外壳：浏览器模式下不生成盒子，桌面端变成固定圆角滚动容器 */
+    #app-shell {
+      display: contents;
+    }
+
     body.is-tauri {
       height: 100vh;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    body.is-tauri #app-shell {
+      display: block;
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
       overflow-y: auto;
       overflow-x: hidden;
       border-radius: 12px;
@@ -62,22 +78,22 @@
     }
 
     /* 最大化时取消圆角，贴合屏幕边缘 */
-    body.is-tauri.is-maximized {
+    body.is-tauri.is-maximized #app-shell {
       border-radius: 0;
     }
 
-    body.is-tauri::-webkit-scrollbar {
+    body.is-tauri #app-shell::-webkit-scrollbar {
       width: 10px;
     }
 
-    body.is-tauri::-webkit-scrollbar-thumb {
+    body.is-tauri #app-shell::-webkit-scrollbar-thumb {
       background: rgba(100, 116, 139, 0.45);
       border-radius: 8px;
       border: 2px solid transparent;
       background-clip: content-box;
     }
 
-    body.is-tauri::-webkit-scrollbar-track {
+    body.is-tauri #app-shell::-webkit-scrollbar-track {
       background: transparent;
     }
 
@@ -853,6 +869,10 @@
       body {
         background: #fff;
       }
+      /* 打印/导出 PDF 时外壳不参与布局，避免圆角容器裁剪分页 */
+      #app-shell {
+        display: contents !important;
+      }
       .toolbar,
       .entry-card,
       .sheet-meta-bar,
@@ -911,6 +931,9 @@
       <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" stroke="currentColor" stroke-width="1.1" /></svg>
     </button>
   </div>
+
+  <!-- 内容外壳：桌面端作为圆角滚动容器，浏览器模式下不参与布局 -->
+  <div id="app-shell">
 
   <!-- 顶部功能栏：打印与导出 PDF 独立拆分（桌面端整条可作为窗口拖拽区域） -->
   <div class="toolbar" data-tauri-drag-region>
@@ -1033,6 +1056,9 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  </div>
+  <!-- /#app-shell -->
 
   <script>
     const PRESET_UNITS = ["个", "张", "套", "块", "条", "本", "面", "份", "项", "卷", "米", "平方米"];
