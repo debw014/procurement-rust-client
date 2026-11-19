@@ -2634,6 +2634,7 @@
       const appWindow = tauri.window.getCurrentWindow();
       document.documentElement.classList.add("is-tauri");
       document.body.classList.add("is-tauri");
+      document.title = `DBG inner=${window.innerWidth}x${window.innerHeight} outer=${window.outerWidth}x${window.outerHeight} dpr=${window.devicePixelRatio}`;
 
       const minBtn = document.getElementById("tbMin");
       const maxBtn = document.getElementById("tbMax");
