@@ -46,14 +46,14 @@
       display: none;
     }
 
-    html:has(body.is-tauri) {
+    html.is-tauri {
       height: 100%;
       overflow: hidden;
       background: transparent;
     }
 
     body.is-tauri {
-      height: 100%;
+      height: 100vh;
       overflow-y: auto;
       overflow-x: hidden;
       border-radius: 12px;
@@ -2606,6 +2606,7 @@
       if (!tauri || !tauri.window) return;
 
       const appWindow = tauri.window.getCurrentWindow();
+      document.documentElement.classList.add("is-tauri");
       document.body.classList.add("is-tauri");
 
       const minBtn = document.getElementById("tbMin");
