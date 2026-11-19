@@ -23,3 +23,6 @@ src-tauri/gen/
 
 # 本地构建产物验证目录
 .dlcheck/
+
+# 本地构建产物输出
+build-output/
