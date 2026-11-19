@@ -41,60 +41,23 @@
       -moz-appearance: textfield;
     }
 
-    /* ===== 桌面端窗口外观：圆角窗口 + 右上角浮层窗口按钮（系统标题栏已隐藏） ===== */
+    /* ===== 桌面端窗口外观：无边框 + 右上角浮层窗口按钮（系统标题栏已隐藏） ===== */
     #win-controls {
       display: none;
     }
 
-    html.is-tauri {
-      height: 100%;
-      overflow: hidden;
-      background: transparent;
+    /* 桌面端隐藏滚动条（仍可滚动，触控板/滚轮不受影响） */
+    html.is-tauri,
+    html.is-tauri body {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
     }
 
-    /* 内容外壳：浏览器模式下不生成盒子，桌面端变成固定圆角滚动容器 */
-    #app-shell {
-      display: contents;
-    }
-
-    body.is-tauri {
-      height: 100vh;
-      overflow: hidden;
-      background: transparent;
-    }
-
-    body.is-tauri #app-shell {
-      display: block;
-      position: fixed;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
-      border-radius: 12px;
-      background: var(--bg);
-      transition: border-radius 0.15s ease;
-    }
-
-    /* 最大化时取消圆角，贴合屏幕边缘 */
-    body.is-tauri.is-maximized #app-shell {
-      border-radius: 0;
-    }
-
-    body.is-tauri #app-shell::-webkit-scrollbar {
-      width: 10px;
-    }
-
-    body.is-tauri #app-shell::-webkit-scrollbar-thumb {
-      background: rgba(100, 116, 139, 0.45);
-      border-radius: 8px;
-      border: 2px solid transparent;
-      background-clip: content-box;
-    }
-
-    body.is-tauri #app-shell::-webkit-scrollbar-track {
-      background: transparent;
+    html.is-tauri::-webkit-scrollbar,
+    html.is-tauri body::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
     }
 
     /* 右上角窗口控制按钮：浮在工具栏之上，不占布局高度 */
@@ -869,10 +832,6 @@
       body {
         background: #fff;
       }
-      /* 打印/导出 PDF 时外壳不参与布局，避免圆角容器裁剪分页 */
-      #app-shell {
-        display: contents !important;
-      }
       .toolbar,
       .entry-card,
       .sheet-meta-bar,
@@ -932,9 +891,6 @@
     </button>
   </div>
 
-  <!-- 内容外壳：桌面端作为圆角滚动容器，浏览器模式下不参与布局 -->
-  <div id="app-shell">
-
   <!-- 顶部功能栏：打印与导出 PDF 独立拆分（桌面端整条可作为窗口拖拽区域） -->
   <div class="toolbar" data-tauri-drag-region>
     <div class="toolbar-title">
@@ -949,7 +905,7 @@
       <button class="btn-dark" onclick="exportBackup()">⬇️ 导出备份 (.json)</button>
       <button class="btn-dark" onclick="triggerImportBackup()">⬆️ 导入备份</button>
       <input type="file" id="importBackupFile" accept=".json,application/json" style="display:none;" onchange="handleImportBackupFile(event)" />
-      <button class="btn-dark" onclick="exportToExcel()">📊 导出 Excel (.xlsx)</button>
+      <button class="btn-dark" onclick="exportToExcel()">📊 导出 Excel</button>
       <button class="btn-pdf" id="exportPdfBtn" onclick="exportToPDF()">📑 导出 PDF</button>
       <button class="btn-primary" onclick="directPrint()">🖨️ 打印</button>
     </div>
@@ -1056,9 +1012,6 @@
   </div>
 
   <div class="toast" id="toast"></div>
-
-  </div>
-  <!-- /#app-shell -->
 
   <script>
     const PRESET_UNITS = ["个", "张", "套", "块", "条", "本", "面", "份", "项", "卷", "米", "平方米"];
@@ -2634,7 +2587,6 @@
       const appWindow = tauri.window.getCurrentWindow();
       document.documentElement.classList.add("is-tauri");
       document.body.classList.add("is-tauri");
-      document.title = `DBG inner=${window.innerWidth}x${window.innerHeight} outer=${window.outerWidth}x${window.outerHeight} dpr=${window.devicePixelRatio}`;
 
       const minBtn = document.getElementById("tbMin");
       const maxBtn = document.getElementById("tbMax");
@@ -2650,8 +2602,6 @@
           maxBtn.innerHTML = maximized ? ICON_RESTORE : ICON_MAX;
           maxBtn.title = maximized ? "向下还原" : "最大化";
           maxBtn.setAttribute("aria-label", maxBtn.title);
-          // 最大化时取消圆角，还原时恢复圆角
-          document.body.classList.toggle("is-maximized", maximized);
         } catch (err) {
           /* 忽略：非桌面端或权限不足 */
         }
