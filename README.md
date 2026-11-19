@@ -6,18 +6,19 @@
 
 - `src-tauri/src/lib.rs`：Rust 本地持久化与原生文件导出命令（`load_app_data`、`save_app_data`、`get_data_file_path`、`export_file_native`）
 - `src-tauri/src/main.rs`：桌面端入口
-- `src-tauri/tauri.conf.json`：Tauri 2 窗口与打包配置（`decorations: false`，使用自定义标题栏）
+- `src-tauri/tauri.conf.json`：Tauri 2 窗口与打包配置（`decorations: false` + `transparent: true`，无边框圆角窗口）
 - `src-tauri/icons/`：应用图标（由 `scripts/make_icons.py` 生成）
-- `dist/index.html`：前端单据录入、分页、Excel/PDF 导出界面（已内置 Tauri 原生桥接与自定义标题栏）
+- `dist/index.html`：前端单据录入、分页、Excel/PDF 导出界面（已内置 Tauri 原生桥接与右上角窗口按钮）
 - `.github/workflows/build-windows.yml`：GitHub Actions 自动编译 Windows exe
 
-## 自定义标题栏
+## 无边框圆角窗口与右上角按钮
 
-系统标题栏已关闭（`decorations: false`），改由 `dist/index.html` 顶部的 `#app-titlebar` 提供：
+系统标题栏已关闭（`decorations: false`），窗口为圆角无边框（`transparent: true` + CSS `border-radius: 12px`）：
 
-- 拖拽移动：`data-tauri-drag-region`（双击空白处由 Tauri 原生切换最大化）
-- 右侧按钮：最小化 / 最大化（还原）/ 关闭，调用 `window.__TAURI__.window` API
-- 仅在桌面端启用（检测到 `window.__TAURI__` 时给 `<body>` 加 `is-tauri`），浏览器打开时自动隐藏
+- 窗口按钮：最小化 / 最大化（还原）/ 关闭，浮动在窗口右上角、覆盖在深色工具栏之上（`#win-controls`）
+- 拖拽移动：深色工具栏整条为拖拽区（`data-tauri-drag-region`），双击空白处由 Tauri 原生切换最大化
+- 圆角：常态 12px 圆角，最大化时自动取消圆角贴合屏幕
+- 仅在桌面端启用（检测到 `window.__TAURI__` 时给 `<body>` 加 `is-tauri`），浏览器打开时按钮自动隐藏、无圆角
 
 ## 在 GitHub 上编译 exe
 

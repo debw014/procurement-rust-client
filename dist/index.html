@@ -41,75 +41,64 @@
       -moz-appearance: textfield;
     }
 
-    /* ===== 自定义标题栏（Tauri 桌面端：系统标题栏已隐藏） ===== */
-    #app-titlebar {
+    /* ===== 桌面端窗口外观：圆角窗口 + 右上角浮层窗口按钮（系统标题栏已隐藏） ===== */
+    #win-controls {
       display: none;
     }
 
-    body.is-tauri {
-      padding-top: 36px;
+    html:has(body.is-tauri) {
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
     }
 
-    body.is-tauri #app-titlebar {
+    body.is-tauri {
+      height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      border-radius: 12px;
+      background: var(--bg);
+      transition: border-radius 0.15s ease;
+    }
+
+    /* 最大化时取消圆角，贴合屏幕边缘 */
+    body.is-tauri.is-maximized {
+      border-radius: 0;
+    }
+
+    body.is-tauri::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    body.is-tauri::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.45);
+      border-radius: 8px;
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+
+    body.is-tauri::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    /* 右上角窗口控制按钮：浮在工具栏之上，不占布局高度 */
+    body.is-tauri #win-controls {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 36px;
+      top: 9px;
+      right: 12px;
+      z-index: 9999;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      background: linear-gradient(90deg, #0b1220 0%, #111c33 100%);
-      color: #e2e8f0;
-      z-index: 9999;
+      gap: 2px;
       user-select: none;
       -webkit-user-select: none;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
     }
 
-    .tb-drag {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex: 1;
-      height: 100%;
-      min-width: 0;
-      padding: 0 14px;
-    }
-
-    .tb-logo {
-      font-size: 15px;
-      line-height: 1;
-    }
-
-    .tb-title {
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.3px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .tb-sub {
-      font-size: 11px;
-      color: #94a3b8;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .tb-controls {
-      display: flex;
-      height: 100%;
-      flex-shrink: 0;
-    }
-
-    .tb-btn {
-      width: 46px;
-      height: 100%;
+    .wc-btn {
+      width: 34px;
+      height: 30px;
       border: 0;
-      border-radius: 0;
+      border-radius: 6px;
       padding: 0;
       background: transparent;
       color: #cbd5e1;
@@ -119,26 +108,26 @@
       transition: background 0.12s ease, color 0.12s ease;
     }
 
-    .tb-btn:hover {
-      background: rgba(148, 163, 184, 0.18);
+    .wc-btn:hover {
+      background: rgba(148, 163, 184, 0.24);
       color: #fff;
     }
 
-    .tb-btn:active {
-      background: rgba(148, 163, 184, 0.3);
+    .wc-btn:active {
+      background: rgba(148, 163, 184, 0.34);
     }
 
-    .tb-btn.tb-close:hover {
+    .wc-btn.wc-close:hover {
       background: #e81123;
       color: #fff;
     }
 
-    .tb-btn svg {
+    .wc-btn svg {
       display: block;
       pointer-events: none;
     }
 
-    /* 顶部控制栏 */
+    /* 顶部控制栏（桌面端同时作为窗口拖拽区域，右侧留出窗口按钮空间） */
     .toolbar {
       position: sticky;
       top: 0;
@@ -154,9 +143,10 @@
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
 
-    /* 桌面端有自定义标题栏时，工具栏吸附在其下方 */
     body.is-tauri .toolbar {
-      top: 36px;
+      padding-right: 128px;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     .toolbar-title {
@@ -909,30 +899,23 @@
 </head>
 <body>
 
-  <!-- 自定义标题栏：仅桌面端显示（系统标题栏已在 tauri.conf.json 中关闭） -->
-  <div id="app-titlebar">
-    <div class="tb-drag" data-tauri-drag-region>
-      <span class="tb-logo" data-tauri-drag-region>📋</span>
-      <span class="tb-title" data-tauri-drag-region>清单制作工具</span>
-      <span class="tb-sub" data-tauri-drag-region>Procurement List Tool</span>
-    </div>
-    <div class="tb-controls">
-      <button class="tb-btn" id="tbMin" type="button" title="最小化" aria-label="最小化">
-        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.1" /></svg>
-      </button>
-      <button class="tb-btn" id="tbMax" type="button" title="最大化" aria-label="最大化">
-        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.6" y="0.6" width="8.8" height="8.8" fill="none" stroke="currentColor" stroke-width="1.1" /></svg>
-      </button>
-      <button class="tb-btn tb-close" id="tbClose" type="button" title="关闭" aria-label="关闭">
-        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" stroke="currentColor" stroke-width="1.1" /></svg>
-      </button>
-    </div>
+  <!-- 右上角窗口控制按钮：仅桌面端显示（系统标题栏已在 tauri.conf.json 中关闭） -->
+  <div id="win-controls">
+    <button class="wc-btn" id="tbMin" type="button" title="最小化" aria-label="最小化">
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.1" /></svg>
+    </button>
+    <button class="wc-btn" id="tbMax" type="button" title="最大化" aria-label="最大化">
+      <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.6" y="0.6" width="8.8" height="8.8" fill="none" stroke="currentColor" stroke-width="1.1" /></svg>
+    </button>
+    <button class="wc-btn wc-close" id="tbClose" type="button" title="关闭" aria-label="关闭">
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" stroke="currentColor" stroke-width="1.1" /></svg>
+    </button>
   </div>
 
-  <!-- 顶部功能栏：打印与导出 PDF 独立拆分 -->
-  <div class="toolbar">
+  <!-- 顶部功能栏：打印与导出 PDF 独立拆分（桌面端整条可作为窗口拖拽区域） -->
+  <div class="toolbar" data-tauri-drag-region>
     <div class="toolbar-title">
-      <span>📋 清单制作工具</span>
+      <span data-tauri-drag-region>📋 清单制作工具</span>
       <span class="badge-save" id="saveStatus">已自动防覆盖保护</span>
     </div>
     <div class="toolbar-actions">
@@ -2639,6 +2622,8 @@
           maxBtn.innerHTML = maximized ? ICON_RESTORE : ICON_MAX;
           maxBtn.title = maximized ? "向下还原" : "最大化";
           maxBtn.setAttribute("aria-label", maxBtn.title);
+          // 最大化时取消圆角，还原时恢复圆角
+          document.body.classList.toggle("is-maximized", maximized);
         } catch (err) {
           /* 忽略：非桌面端或权限不足 */
         }
