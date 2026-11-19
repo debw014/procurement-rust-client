@@ -1,0 +1,2497 @@
+<!DOCTYPE html>
+<!-- 修复版 2026-11-19（第二轮：金额两位小数+统一渲染模型、真 xlsx 数值导出、页内对话框、数量单位间距收紧、触屏行按钮、CDN SRI、旧版数据迁移）：1) JSON 备份导出/导入（当前单据+全部存档+全部快照，导入前自动留回滚快照） 2) 修双份快照：操作前已备份的保存不再重复记，快照指纹改为完整 state 3) 存档冻结：打开存档后编辑不再自动覆盖，存档列表新增“保存修改到此存档”手动写回。存储键仍为 v7，原数据直接沿用。 -->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>清单制作工具</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+  <style>
+    :root {
+      --primary: #1d4ed8;
+      --primary-hover: #1e40af;
+      --bg: #f1f5f9;
+      --panel: #ffffff;
+      --border: #cbd5e1;
+      --text: #0f172a;
+      --muted: #64748b;
+      --danger: #dc2626;
+      --success: #059669;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* 隐藏数字输入框默认上下箭头，防止挤压居中排版 */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+
+    /* 顶部控制栏 */
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      background: #0f172a;
+      color: #fff;
+      padding: 10px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .toolbar-title {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-save {
+      font-size: 12px;
+      background: rgba(16, 185, 129, 0.2);
+      color: #6ee7b7;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button {
+      cursor: pointer;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-pdf {
+      background: #b91c1c;
+      color: #fff;
+    }
+    .btn-pdf:hover {
+      background: #991b1b;
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: #fff;
+    }
+    .btn-success:hover {
+      background: #047857;
+    }
+
+    .btn-dark {
+      background: #1e293b;
+      color: #f8fafc;
+      border-color: #334155;
+    }
+    .btn-dark:hover {
+      background: #334155;
+    }
+
+    .btn-outline {
+      background: #fff;
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .btn-outline:hover {
+      background: #f8fafc;
+    }
+
+    .btn-danger-outline {
+      background: #fff;
+      color: var(--danger);
+      border-color: #fecaca;
+    }
+    .btn-danger-outline:hover {
+      background: #fef2f2;
+    }
+
+    /* 极速录入区 */
+    .entry-card {
+      max-width: 1020px;
+      margin: 16px auto 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .entry-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .entry-grid {
+      display: grid;
+      grid-template-columns: 88px 1fr 82px 86px 90px 96px 90px auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .entry-grid.no-handler {
+      grid-template-columns: 88px 1fr 82px 86px 90px 96px auto;
+    }
+
+    .field {
+      position: relative;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: #475569;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    .field input {
+      width: 100%;
+      height: 34px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 13px;
+      outline: none;
+      background: #fff;
+    }
+
+    .field input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.15);
+    }
+
+    /* 紧凑横向单位选择浮层 */
+    .unit-input-wrap {
+      position: relative;
+    }
+
+    .unit-input-wrap input {
+      padding-right: 22px;
+      text-align: center;
+    }
+
+    .unit-caret {
+      position: absolute;
+      right: 7px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 10px;
+      color: #64748b;
+      pointer-events: none;
+    }
+
+    .unit-popover {
+      position: absolute;
+      top: calc(100% + 5px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 256px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 8px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+      z-index: 60;
+      display: none;
+    }
+
+    .unit-popover.open {
+      display: block;
+    }
+
+    .unit-popover-tip {
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .unit-chip-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .unit-chip {
+      padding: 4px 9px;
+      font-size: 12px;
+      border-radius: 5px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #1e293b;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+
+    .unit-chip:hover {
+      background: #eff6ff;
+      border-color: #93c5fd;
+      color: var(--primary);
+    }
+
+    .unit-chip.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .preview-amount {
+      height: 34px;
+      line-height: 34px;
+      padding: 0 8px;
+      background: #f8fafc;
+      border: 1px dashed #94a3b8;
+      border-radius: 5px;
+      font-weight: 600;
+      color: var(--primary);
+      text-align: right;
+      font-size: 14px;
+    }
+
+    /* 顶部状态信息条 */
+    .sheet-meta-bar {
+      max-width: 1020px;
+      margin: 0 auto 10px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .toggle-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+      font-weight: 500;
+    }
+    .toggle-pill:hover {
+      background: #eff6ff;
+      border-color: #93c5fd;
+    }
+    .toggle-pill input {
+      margin: 0;
+      cursor: pointer;
+      accent-color: var(--primary);
+    }
+
+    /* A4 单页纸张容器（每页严格容纳 17 行表格主体） */
+    .a4-page {
+      max-width: 1020px;
+      margin: 0 auto 24px;
+      background: #fff;
+      padding: 28px 34px 32px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .page-tag {
+      position: absolute;
+      top: 8px;
+      right: 14px;
+      font-size: 11px;
+      color: #94a3b8;
+      font-family: sans-serif;
+    }
+
+    /* 经典宋体黑框白底单据 */
+    .doc-container {
+      font-family: "SimSun", "宋体", "NSimSun", serif;
+      color: #000;
+    }
+
+    .doc-header {
+      display: flex;
+      align-items: flex-end;
+      margin-bottom: 8px;
+      padding-left: 16px;
+      font-size: 19px;
+    }
+
+    .doc-header-label {
+      white-space: nowrap;
+      letter-spacing: 1px;
+    }
+
+    .doc-org-input {
+      border: none;
+      border-bottom: 1.5px solid #000;
+      font-family: "SimSun", "宋体", serif;
+      font-size: 19px;
+      color: #000;
+      width: 340px;
+      text-align: center;
+      padding: 2px 8px;
+      outline: none;
+      background: transparent;
+    }
+
+    .doc-org-input:focus {
+      background: #eff6ff;
+    }
+
+    table.classic-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      border: 1.5px solid #000;
+    }
+
+    table.classic-table th,
+    table.classic-table td {
+      border: 1px solid #000;
+      height: 31px;
+      padding: 0 4px;
+      font-family: "SimSun", "宋体", serif;
+      font-size: 15px;
+      color: #000;
+      vertical-align: middle;
+      text-align: center;
+    }
+
+    table.classic-table th {
+      font-weight: normal;
+      font-size: 17px;
+      text-align: center;
+      height: 34px;
+    }
+
+    /* 显示经手人时的六列宽度比例 */
+    .col-date { width: 9.5%; text-align: center; }
+    .col-content { width: 52.5%; text-align: center; }
+    .col-qty { width: 9.5%; text-align: center; }
+    .col-price { width: 8.5%; text-align: center; }
+    .col-amount { width: 8.5%; text-align: center; position: relative; }
+    .col-handler { width: 11.5%; text-align: center; position: relative; }
+
+    /* 隐藏经手人时的五列宽度比例（原经手人宽度并入内容列） */
+    table.classic-table.hide-handler .col-content { width: 64%; }
+    table.classic-table.hide-handler .col-handler { display: none; }
+
+    /* 表内无边框可编辑输入框：严格居中 */
+    .cell-input {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: transparent;
+      font-family: "SimSun", "宋体", serif;
+      font-size: 15px;
+      color: #000;
+      text-align: center;
+      outline: none;
+      padding: 0;
+      margin: 0 auto;
+    }
+
+    .cell-input:focus {
+      background: #eff6ff;
+    }
+
+    .cell-textarea {
+      display: block;
+      width: 100%;
+      min-height: 29px;
+      border: none;
+      background: transparent;
+      font-family: "SimSun", "宋体", serif;
+      font-size: 15px;
+      line-height: 1.35;
+      color: #000;
+      text-align: center;
+      outline: none;
+      padding: 4px;
+      margin: 0 auto;
+      resize: none;
+      overflow: hidden;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .cell-textarea:focus {
+      background: #eff6ff;
+    }
+
+    /* 数量与单位紧凑居中容器 */
+    .qty-cell-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      margin: 0 auto;
+      gap: 0;
+    }
+
+    .qty-num-input {
+      border: none;
+      background: transparent;
+      font-family: "SimSun", "宋体", serif;
+      font-size: 15px;
+      text-align: right;
+      outline: none;
+      color: #000;
+      padding: 0;
+      margin: 0;
+      min-width: 1ch;
+    }
+
+    .qty-unit-select {
+      border: none;
+      background: transparent;
+      font-family: "SimSun", "宋体", serif;
+      font-size: 15px;
+      color: #000;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      padding: 0;
+      margin: 0;
+      text-align: left;
+      text-align-last: left;
+    }
+
+    .qty-num-input:focus,
+    .qty-unit-select:focus {
+      background: #eff6ff;
+    }
+
+    /* 行悬浮操作按钮 */
+    .data-row {
+      position: relative;
+    }
+    .data-row:hover {
+      background: #f8fafc;
+    }
+
+    .row-tools {
+      position: absolute;
+      right: -76px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: none;
+      gap: 3px;
+      background: #fff;
+      border: 1px solid var(--border);
+      padding: 2px 4px;
+      border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      z-index: 10;
+    }
+
+    .data-row:hover .row-tools {
+      display: flex;
+    }
+
+    .row-tool-btn {
+      padding: 1px 5px;
+      font-size: 11px;
+      border-radius: 3px;
+      background: #f1f5f9;
+      color: #334155;
+      border: none;
+    }
+    .row-tool-btn:hover {
+      background: #e2e8f0;
+    }
+    .row-tool-btn.del:hover {
+      background: #fee2e2;
+      color: var(--danger);
+    }
+
+    .blank-row {
+      cursor: pointer;
+    }
+    .blank-row:hover {
+      background: #f8fafc;
+    }
+
+    .total-row td {
+      font-size: 16px;
+    }
+
+    /* 历史记录与存档抽屉 */
+    .drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      z-index: 40;
+      display: none;
+    }
+    .drawer-backdrop.open {
+      display: block;
+    }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: -460px;
+      width: 440px;
+      max-width: 95vw;
+      height: 100vh;
+      background: #fff;
+      z-index: 50;
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+      transition: right 0.25s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .drawer.open {
+      right: 0;
+    }
+
+    .drawer-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .drawer-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: #f8fafc;
+    }
+
+    .drawer-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+    }
+
+    .drawer-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      background: #fff;
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px;
+    }
+
+    .history-item {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: #fff;
+    }
+
+    .history-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 4px;
+    }
+
+    .history-title {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .history-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .history-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #0f172a;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      z-index: 100;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.2s ease;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* 页内对话框（替代原生 prompt/confirm） */
+    .dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      z-index: 90;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .dialog-backdrop.open { display: flex; }
+    .dialog-box {
+      background: #fff;
+      border-radius: 10px;
+      padding: 18px 20px;
+      width: 420px;
+      max-width: 92vw;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    }
+    .dialog-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+    .dialog-msg { font-size: 13px; color: #334155; white-space: pre-line; line-height: 1.6; margin-bottom: 10px; }
+    .dialog-input {
+      width: 100%;
+      height: 36px;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+      display: none;
+    }
+    .dialog-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.15); }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+    /* 触屏没有 hover：行操作按钮直接显示在行内；键盘聚焦行内时也显示 */
+    @media (hover: none) {
+      .row-tools { display: flex; right: 2px; }
+    }
+    .data-row:focus-within .row-tools { display: flex; }
+
+    @media (max-width: 860px) {
+      .entry-grid,
+      .entry-grid.no-handler {
+        grid-template-columns: 1fr 1fr;
+      }
+      .row-tools {
+        right: 4px;
+      }
+    }
+
+    /* 防止窄屏/侧栏环境下 html2pdf 容器居中溢出导致左侧被裁剪 */
+    .html2pdf__overlay {
+      overflow: visible !important;
+    }
+    .html2pdf__container {
+      margin: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+    }
+
+    /* 打印样式：每页严格 17 行，多出自动另起一页 */
+    @media print {
+      @page {
+        size: A4 landscape;
+        margin: 12mm 14mm;
+      }
+      body {
+        background: #fff;
+      }
+      .toolbar,
+      .entry-card,
+      .sheet-meta-bar,
+      .row-tools,
+      .page-tag,
+      .drawer,
+      .drawer-backdrop,
+      .dialog-backdrop,
+      .unit-popover,
+      .toast {
+        display: none !important;
+      }
+      .a4-page {
+        box-shadow: none;
+        margin: 0;
+        padding: 0;
+        max-width: 100%;
+        page-break-after: always;
+        break-after: page;
+      }
+      .a4-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      table.classic-table {
+        border-width: 0.75pt;
+      }
+      table.classic-table th,
+      table.classic-table td {
+        border-width: 0.5pt;
+      }
+      .doc-org-input {
+        border-bottom-width: 0.75pt;
+      }
+      .doc-org-input,
+      .cell-input,
+      .cell-textarea,
+      .qty-num-input,
+      .qty-unit-select {
+        background: transparent !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部功能栏：打印与导出 PDF 独立拆分 -->
+  <div class="toolbar">
+    <div class="toolbar-title">
+      <span>📋 清单制作工具</span>
+      <span class="badge-save" id="saveStatus">已自动防覆盖保护</span>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn-dark" onclick="openDrawer('archives')">🗂️ 历史与存档 (<span id="archiveCount">0</span>)</button>
+      <button class="btn-success" onclick="saveAsArchive()">💾 另存为独立存档</button>
+      <button class="btn-dark" onclick="createNewBlankDoc()">📄 新建空白单据</button>
+      <button class="btn-dark" id="bindLocalFileBtn" onclick="bindLocalArchiveFile()">📁 绑定本地存档文件</button>
+      <button class="btn-dark" onclick="exportBackup()">⬇️ 导出备份 (.json)</button>
+      <button class="btn-dark" onclick="triggerImportBackup()">⬆️ 导入备份</button>
+      <input type="file" id="importBackupFile" accept=".json,application/json" style="display:none;" onchange="handleImportBackupFile(event)" />
+      <button class="btn-dark" onclick="exportToExcel()">📊 导出 Excel (.xlsx)</button>
+      <button class="btn-pdf" id="exportPdfBtn" onclick="exportToPDF()">📑 导出 PDF</button>
+      <button class="btn-primary" onclick="directPrint()">🖨️ 打印</button>
+    </div>
+  </div>
+
+  <!-- 极速录入卡片 -->
+  <div class="entry-card">
+    <div class="entry-header">
+      <span><strong>极速录入条</strong>（填写后按 <kbd>Enter</kbd> 回车直接添加到“合计”上方，自动生成防覆盖快照）</span>
+      <span>A4 单页固定 17 行容量，超出自动分页</span>
+    </div>
+    <div class="entry-grid" id="entryGrid">
+      <div class="field">
+        <label>日期</label>
+        <input type="text" id="inDate" />
+      </div>
+      <div class="field">
+        <label>内 容</label>
+        <input type="text" id="inContent" />
+      </div>
+      <div class="field">
+        <label>数量</label>
+        <input type="number" id="inQty" step="any" oninput="updatePreviewAmount()" />
+      </div>
+      <div class="field" id="unitFieldContainer">
+        <label>单位</label>
+        <div class="unit-input-wrap">
+          <input type="text" id="inUnit" value="个" onfocus="openUnitPopover()" onclick="openUnitPopover()" oninput="syncUnitChipHighlight()" />
+          <span class="unit-caret">▼</span>
+        </div>
+        <!-- 紧凑横向单位选择浮层 -->
+        <div class="unit-popover" id="unitPopover">
+          <div class="unit-popover-tip">
+            <span>点选常用单位（亦可直接输入）</span>
+          </div>
+          <div class="unit-chip-grid" id="unitChipGrid"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>单价</label>
+        <input type="number" id="inPrice" step="any" oninput="updatePreviewAmount()" />
+      </div>
+      <div class="field">
+        <label>自动金额</label>
+        <div class="preview-amount" id="inAmountPreview">0</div>
+      </div>
+      <div class="field" id="inHandlerField">
+        <label>经手人</label>
+        <input type="text" id="inHandler" />
+      </div>
+      <div class="field">
+        <button class="btn-primary" style="height:34px; width:100%;" onclick="addRowFromInput()">+ 添加行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 单据状态控制条 -->
+  <div class="sheet-meta-bar">
+    <div>
+      当前单据：<strong id="currentDocNameLabel">未命名草稿（自动保存中）</strong>
+      &nbsp;|&nbsp;
+      <span id="pageSummaryLabel">共 1 页（每页固定 17 行含合计与空行）</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <button type="button" id="localFileStatusBtn" class="toggle-pill" onclick="handleLocalFileStatusClick()" title="绑定电脑本地 .json 文件后，每次保存/存档都会自动写入硬盘，清理浏览器缓存也不会丢失">
+        <span id="localFileStatusText">📁 本地文件：未绑定（点击绑定防清缓存）</span>
+      </button>
+      <label class="toggle-pill" title="勾选显示“经手人”列，取消勾选则隐藏（打印与导出同步生效）">
+        <input type="checkbox" id="toggleHandlerCheckbox" checked onchange="toggleHandlerColumn(this.checked)" />
+        <span>显示经手人栏</span>
+      </label>
+      <button class="btn-danger-outline" style="padding:4px 9px; font-size:12px;" onclick="clearAllRows()">清空明细行</button>
+    </div>
+  </div>
+
+  <!-- 多页 A4 单据渲染容器 -->
+  <div id="pagesContainer"></div>
+
+  <!-- 历史记录与独立存档抽屉 -->
+  <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+  <div class="drawer" id="historyDrawer">
+    <div class="drawer-header">
+      <span>🛡️ 历史快照与存档管理（防覆盖保护）</span>
+      <button class="btn-outline" style="padding:3px 8px;" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-tabs">
+      <div class="drawer-tab active" id="tabArchives" onclick="switchDrawerTab('archives')">独立命名存档 (<span id="tabArchiveCount">0</span>)</div>
+      <div class="drawer-tab" id="tabSnapshots" onclick="switchDrawerTab('snapshots')">自动防覆盖历史 (<span id="tabSnapshotCount">0</span>)</div>
+    </div>
+    <div class="drawer-body" id="drawerContent"></div>
+  </div>
+
+  <!-- 页内对话框（替代原生 prompt/confirm） -->
+  <div class="dialog-backdrop" id="dialogBackdrop">
+    <div class="dialog-box">
+      <div class="dialog-title" id="dialogTitle">提示</div>
+      <div class="dialog-msg" id="dialogMsg"></div>
+      <input type="text" class="dialog-input" id="dialogInput" />
+      <div class="dialog-actions">
+        <button class="btn-outline" id="dialogCancelBtn">取消</button>
+        <button class="btn-primary" id="dialogOkBtn">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const PRESET_UNITS = ["个", "张", "套", "块", "条", "本", "面", "份", "项", "卷", "米", "平方米"];
+    const A4_ROWS_PER_PAGE = 17;
+    const STORAGE_KEYS = {
+      CURRENT: "procurement_tool_current_v7",
+      ARCHIVES: "procurement_tool_archives_v7",
+      SNAPSHOTS: "procurement_tool_snapshots_v7"
+    };
+
+    function createEmptyState(title = "未命名草稿", orgName = "", showHandler = true) {
+      return {
+        docId: null,
+        docTitle: title,
+        orgName: orgName,
+        showHandler: showHandler,
+        rows: []
+      };
+    }
+
+    let state = null;
+    let activeDrawerTab = "archives";
+    let snapshotDebounceTimer = null;
+
+    function formatNum(num) {
+      if (num === "" || num === null || num === undefined || isNaN(num)) return "";
+      const rounded = Math.round(Number(num) * 100) / 100;
+      return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.?0+$/, "");
+    }
+
+    // 金额与单价不强制补 .00，整数直接显示整数，有小数位时保留实际小数
+    function formatMoney(num) {
+      return formatNum(num);
+    }
+
+    function rowAmountDisplay(row) {
+      if (row.qty === "" || row.qty === null || row.price === "" || row.price === null) return "";
+      return formatMoney(calcRowAmount(row));
+    }
+
+    // Single source of truth for screen + PDF + Excel: pagination and every display string
+    // are computed here once; each renderer only lays out what this model gives it.
+    function getPageModel() {
+      const showHandler = state.showHandler !== false;
+      const totalDisplay = state.rows.length > 0 ? formatMoney(calcTotalAmount(state.rows)) : "";
+      const pages = buildPages().map((page) => ({
+        ...page,
+        items: page.items.map(({ row, globalIndex }) => ({
+          row,
+          globalIndex,
+          qtyDisplay: row.qty === "" || row.qty === null ? "" : `${formatNum(row.qty)}${row.unit || ""}`,
+          priceDisplay: formatMoney(row.price),
+          amountDisplay: rowAmountDisplay(row)
+        }))
+      }));
+      return { pages, totalDisplay, showHandler };
+    }
+
+    function getUnitSelectWidth(unit) {
+      const str = unit ? String(unit) : "个";
+      let w = 0;
+      for (const ch of str) w += ch.charCodeAt(0) > 255 ? 2 : 1;
+      return w + 0.2 + "ch";
+    }
+
+    function getQtyInputWidth(val) {
+      const str = val === "" || val === null || val === undefined ? "1" : String(val);
+      return Math.max(1, str.length) + 0.3 + "ch";
+    }
+
+    function calcRowAmount(row) {
+      const q = parseFloat(row.qty);
+      const p = parseFloat(row.price);
+      if (isNaN(q) || isNaN(p)) return 0;
+      return Math.round(q * p * 100) / 100;
+    }
+
+    function calcTotalAmount(rows) {
+      const sum = rows.reduce((acc, r) => acc + calcRowAmount(r), 0);
+      return Math.round(sum * 100) / 100;
+    }
+
+    function nowString() {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    /* 页内对话框：替代原生 prompt()/confirm()，样式与页面统一，支持 Enter 确认 / Esc 取消 */
+    let dialogResolve = null;
+    function closeDialog(result) {
+      document.getElementById("dialogBackdrop").classList.remove("open");
+      if (dialogResolve) {
+        const r = dialogResolve;
+        dialogResolve = null;
+        r(result);
+      }
+    }
+    function openDialog({ title, message, inputValue, showInput }) {
+      return new Promise((resolve) => {
+        if (dialogResolve) closeDialog(null);
+        dialogResolve = resolve;
+        document.getElementById("dialogTitle").textContent = title || "提示";
+        document.getElementById("dialogMsg").textContent = message || "";
+        const input = document.getElementById("dialogInput");
+        input.style.display = showInput ? "block" : "none";
+        input.value = inputValue || "";
+        const backdrop = document.getElementById("dialogBackdrop");
+        backdrop.classList.add("open");
+        const okBtn = document.getElementById("dialogOkBtn");
+        okBtn.onclick = () => closeDialog(showInput ? input.value : true);
+        document.getElementById("dialogCancelBtn").onclick = () => closeDialog(showInput ? null : false);
+        backdrop.onclick = (e) => {
+          if (e.target === backdrop) closeDialog(showInput ? null : false);
+        };
+        input.onkeydown = (e) => {
+          if (e.key === "Enter") okBtn.onclick();
+          if (e.key === "Escape") closeDialog(showInput ? null : false);
+        };
+        if (showInput) setTimeout(() => { input.focus(); input.select(); }, 30);
+        else setTimeout(() => okBtn.focus(), 30);
+      });
+    }
+    function showConfirmDialog(message, title = "请确认") {
+      return openDialog({ title, message, showInput: false }).then((v) => v === true);
+    }
+    function showPromptDialog(title, defaultValue = "", message = "") {
+      return openDialog({ title, message, inputValue: defaultValue, showInput: true });
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.remove("show"), 2600);
+    }
+
+    /* 切换显示/隐藏经手人栏 */
+    function toggleHandlerColumn(visible) {
+      state.showHandler = Boolean(visible);
+      applyHandlerVisibilityUI();
+      saveCurrentState(visible ? "显示经手人栏" : "隐藏经手人栏", false);
+      renderTable();
+      showToast(visible ? "已显示“经手人”栏" : "已隐藏“经手人”栏（打印与导出同步隐藏）");
+    }
+
+    function applyHandlerVisibilityUI() {
+      const show = state.showHandler !== false;
+      document.getElementById("toggleHandlerCheckbox").checked = show;
+      document.getElementById("inHandlerField").style.display = show ? "" : "none";
+      document.getElementById("entryGrid").classList.toggle("no-handler", !show);
+    }
+
+    /* 横向单位弹窗控制 */
+    function initUnitPopover() {
+      const grid = document.getElementById("unitChipGrid");
+      grid.innerHTML = PRESET_UNITS.map(
+        (u) => `<button type="button" class="unit-chip" data-unit="${u}" onclick="selectUnitChip('${u}')">${u}</button>`
+      ).join("");
+      syncUnitChipHighlight();
+    }
+
+    function openUnitPopover() {
+      syncUnitChipHighlight();
+      document.getElementById("unitPopover").classList.add("open");
+    }
+
+    function closeUnitPopover() {
+      document.getElementById("unitPopover").classList.remove("open");
+    }
+
+    function syncUnitChipHighlight() {
+      const current = document.getElementById("inUnit").value.trim();
+      document.querySelectorAll(".unit-chip").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.unit === current);
+      });
+    }
+
+    function selectUnitChip(unit) {
+      document.getElementById("inUnit").value = unit;
+      syncUnitChipHighlight();
+      closeUnitPopover();
+      document.getElementById("inPrice").focus();
+    }
+
+    document.addEventListener("click", (e) => {
+      const container = document.getElementById("unitFieldContainer");
+      if (container && !container.contains(e.target)) {
+        closeUnitPopover();
+      }
+    });
+
+    function getArchives() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEYS.ARCHIVES) || "[]");
+      } catch {
+        return [];
+      }
+    }
+
+    function setArchives(list) {
+      localStorage.setItem(STORAGE_KEYS.ARCHIVES, JSON.stringify(list));
+      updateCounts();
+      scheduleLocalFileSync(true);
+    }
+
+    function getSnapshots() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEYS.SNAPSHOTS) || "[]");
+      } catch {
+        return [];
+      }
+    }
+
+    function setSnapshots(list) {
+      localStorage.setItem(STORAGE_KEYS.SNAPSHOTS, JSON.stringify(list));
+      updateCounts();
+      scheduleLocalFileSync(false);
+    }
+
+    function recordSnapshot(reason) {
+      if (!state) return;
+      const snapshots = getSnapshots();
+      // fingerprint uses full state so any change counts as a new version
+      const fingerprint = JSON.stringify(state);
+      if (snapshots.length > 0 && snapshots[0].fingerprint === fingerprint) {
+        return;
+      }
+      snapshots.unshift({
+        id: "snap_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+        time: nowString(),
+        reason: reason || "自动保存",
+        orgName: state.orgName || "未填单位",
+        docTitle: state.docTitle || "未命名草稿",
+        rowCount: state.rows.length,
+        total: calcTotalAmount(state.rows),
+        fingerprint,
+        data: JSON.parse(JSON.stringify(state))
+      });
+      if (snapshots.length > 40) snapshots.length = 40;
+      setSnapshots(snapshots);
+    }
+
+    function saveCurrentState(reason = null, immediateSnapshot = false, skipSnapshot = false) {
+      localStorage.setItem(STORAGE_KEYS.CURRENT, JSON.stringify(state));
+
+      // FIX(archive-freeze): no auto write-back to the opened archive.
+      // Archives are frozen at creation; only updateCurrentArchive() overwrites one.
+
+      if (skipSnapshot) {
+        clearTimeout(snapshotDebounceTimer);
+      } else if (reason) {
+        if (immediateSnapshot) {
+          recordSnapshot(reason);
+        } else {
+          clearTimeout(snapshotDebounceTimer);
+          snapshotDebounceTimer = setTimeout(() => recordSnapshot(reason), 1200);
+        }
+      }
+
+      document.getElementById("saveStatus").textContent = "已实时保存 · " + nowString().slice(11);
+      updateCounts();
+      scheduleLocalFileSync(immediateSnapshot);
+    }
+
+    function updateCounts() {
+      const aLen = getArchives().length;
+      const sLen = getSnapshots().length;
+      document.getElementById("archiveCount").textContent = aLen;
+      document.getElementById("tabArchiveCount").textContent = aLen;
+      document.getElementById("tabSnapshotCount").textContent = sLen;
+    }
+
+    function buildPages() {
+      const totalRows = state.rows.length;
+      const pages = [];
+
+      if (totalRows === 0) {
+        pages.push({
+          pageIndex: 0,
+          items: [],
+          hasTotal: true,
+          blankCount: A4_ROWS_PER_PAGE - 1
+        });
+        return pages;
+      }
+
+      let cursor = 0;
+      while (cursor < totalRows) {
+        const remaining = totalRows - cursor;
+        if (remaining <= A4_ROWS_PER_PAGE - 1) {
+          const slice = state.rows.slice(cursor).map((r, i) => ({ row: r, globalIndex: cursor + i }));
+          const blankCount = A4_ROWS_PER_PAGE - slice.length - 1;
+          pages.push({
+            pageIndex: pages.length,
+            items: slice,
+            hasTotal: true,
+            blankCount
+          });
+          cursor = totalRows;
+        } else if (remaining === A4_ROWS_PER_PAGE) {
+          const slice = state.rows.slice(cursor, cursor + A4_ROWS_PER_PAGE).map((r, i) => ({ row: r, globalIndex: cursor + i }));
+          pages.push({
+            pageIndex: pages.length,
+            items: slice,
+            hasTotal: false,
+            blankCount: 0
+          });
+          cursor += A4_ROWS_PER_PAGE;
+          pages.push({
+            pageIndex: pages.length,
+            items: [],
+            hasTotal: true,
+            blankCount: A4_ROWS_PER_PAGE - 1
+          });
+        } else {
+          const slice = state.rows.slice(cursor, cursor + A4_ROWS_PER_PAGE).map((r, i) => ({ row: r, globalIndex: cursor + i }));
+          pages.push({
+            pageIndex: pages.length,
+            items: slice,
+            hasTotal: false,
+            blankCount: 0
+          });
+          cursor += A4_ROWS_PER_PAGE;
+        }
+      }
+
+      return pages;
+    }
+
+    /* ===== JSON backup: export / import (current + archives + snapshots) ===== */
+    function collectBackupData() {
+      return {
+        app: "procurement-list-tool",
+        backupVersion: 1,
+        exportedAt: nowString(),
+        current: JSON.parse(JSON.stringify(state)),
+        archives: getArchives(),
+        snapshots: getSnapshots()
+      };
+    }
+
+    function exportBackup() {
+      const data = collectBackupData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = nowString().slice(0, 10) + "_" + nowString().slice(11, 19).replace(/:/g, "");
+      a.href = url;
+      a.download = `采购清单备份_${stamp}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast(`已导出备份（含 ${data.archives.length} 个存档、${data.snapshots.length} 条快照）`);
+    }
+
+    function triggerImportBackup() {
+      document.getElementById("importBackupFile").click();
+    }
+
+    function normalizeImportedState(raw) {
+      if (!raw || typeof raw !== "object" || !Array.isArray(raw.rows)) return null;
+      const cleanNum = (v) => (v === "" || v === null || v === undefined || isNaN(parseFloat(v)) ? "" : parseFloat(v));
+      const asStr = (v) => (v === null || v === undefined ? "" : String(v));
+      return {
+        docId: typeof raw.docId === "string" ? raw.docId : null,
+        docTitle: asStr(raw.docTitle) || "未命名草稿",
+        orgName: asStr(raw.orgName),
+        showHandler: raw.showHandler !== false,
+        rows: raw.rows.map((r) => ({
+          date: asStr(r && r.date),
+          content: asStr(r && r.content),
+          qty: cleanNum(r && r.qty),
+          unit: asStr(r && r.unit) || "个",
+          price: cleanNum(r && r.price),
+          handler: asStr(r && r.handler)
+        }))
+      };
+    }
+
+    async function handleImportBackupFile(event) {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = "";
+      if (!file) return;
+      let parsed;
+      try {
+        parsed = JSON.parse(await file.text());
+      } catch {
+        showToast("导入失败：这不是有效的 JSON 备份文件");
+        return;
+      }
+      if (!parsed || typeof parsed !== "object" || (!parsed.current && !Array.isArray(parsed.archives))) {
+        showToast("导入失败：文件里没有可识别的单据数据");
+        return;
+      }
+      const newCurrent = parsed.current ? normalizeImportedState(parsed.current) : createEmptyState();
+      if (!newCurrent) {
+        showToast("导入失败：备份中的当前单据格式不正确");
+        return;
+      }
+      const newArchives = (Array.isArray(parsed.archives) ? parsed.archives : [])
+        .map((a) => {
+          const data = a && normalizeImportedState(a.data);
+          if (!data) return null;
+          return {
+            id: String(a.id || "arc_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6)),
+            title: String(a.title || data.docTitle || "未命名存档"),
+            orgName: String(a.orgName || data.orgName || ""),
+            rowCount: data.rows.length,
+            total: calcTotalAmount(data.rows),
+            createdAt: String(a.createdAt || nowString()),
+            updatedAt: String(a.updatedAt || nowString()),
+            data
+          };
+        })
+        .filter(Boolean);
+      const newSnapshots = (Array.isArray(parsed.snapshots) ? parsed.snapshots : [])
+        .map((sn) => {
+          const data = sn && normalizeImportedState(sn.data);
+          if (!data) return null;
+          return { ...sn, data, fingerprint: JSON.stringify(data) };
+        })
+        .filter(Boolean);
+
+      const summary = "将用备份替换当前全部数据：\n· 当前单据：" + newCurrent.docTitle + "（" + newCurrent.rows.length + " 行）\n· 独立存档：" + newArchives.length + " 个\n· 历史快照：" + newSnapshots.length + " 条\n\n导入前会自动把现有数据留一份快照进新数据里，可随时恢复。确定导入吗？";
+      if (!(await showConfirmDialog(summary, "导入备份"))) return;
+
+      if (state && (state.rows.length > 0 || getArchives().length > 0)) {
+        newSnapshots.unshift({
+          id: "snap_" + Date.now() + "_preimport",
+          time: nowString(),
+          reason: "导入备份前自动备份",
+          orgName: state.orgName || "未填单位",
+          docTitle: state.docTitle || "未命名草稿",
+          rowCount: state.rows.length,
+          total: calcTotalAmount(state.rows),
+          fingerprint: JSON.stringify(state),
+          data: JSON.parse(JSON.stringify(state))
+        });
+      }
+      const seen = new Set();
+      const deduped = newSnapshots.filter((sn) => {
+        if (seen.has(sn.fingerprint)) return false;
+        seen.add(sn.fingerprint);
+        return true;
+      });
+      if (deduped.length > 40) deduped.length = 40;
+
+      localStorage.setItem(STORAGE_KEYS.SNAPSHOTS, JSON.stringify(deduped));
+      localStorage.setItem(STORAGE_KEYS.ARCHIVES, JSON.stringify(newArchives));
+      state = newCurrent;
+      if (state.docId && !newArchives.some((a) => a.id === state.docId)) state.docId = null;
+      saveCurrentState(null, false, true);
+      applyHandlerVisibilityUI();
+      renderTable();
+      updateCounts();
+      closeDrawer();
+      showToast("已导入备份：" + newArchives.length + " 个存档、" + deduped.length + " 条快照");
+    }
+
+    // 旧版本（v1-v6 存储键）数据迁移：当前版本还没有数据时，把最近一个旧版本的数据搬过来
+    function migrateLegacyStorage() {
+      let migrated = false;
+      const pairs = [
+        [STORAGE_KEYS.CURRENT, "current"],
+        [STORAGE_KEYS.ARCHIVES, "archives"],
+        [STORAGE_KEYS.SNAPSHOTS, "snapshots"]
+      ];
+      for (const [key, suffix] of pairs) {
+        if (localStorage.getItem(key) !== null) continue;
+        for (let v = 6; v >= 1; v--) {
+          const legacy = localStorage.getItem(`procurement_tool_${suffix}_v${v}`);
+          if (legacy !== null) {
+            localStorage.setItem(key, legacy);
+            migrated = true;
+            break;
+          }
+        }
+      }
+      return migrated;
+    }
+
+    function init() {
+      const migratedLegacy = migrateLegacyStorage();
+      initUnitPopover();
+
+      const saved = localStorage.getItem(STORAGE_KEYS.CURRENT);
+      if (saved) {
+        try {
+          state = JSON.parse(saved);
+          if (state.showHandler === undefined) state.showHandler = true;
+        } catch {
+          state = createEmptyState();
+        }
+      } else {
+        state = createEmptyState();
+      }
+
+      if (state.rows.length > 0 && state.rows[state.rows.length - 1].date) {
+        document.getElementById("inDate").value = state.rows[state.rows.length - 1].date;
+      } else {
+        const d = new Date();
+        document.getElementById("inDate").value = `${d.getMonth() + 1}.${d.getDate()}`;
+      }
+
+      applyHandlerVisibilityUI();
+      renderTable();
+      updateCounts();
+      if (migratedLegacy) showToast("已从旧版本迁移本地数据");
+    }
+
+    function renderTable() {
+      const { pages, totalDisplay, showHandler } = getPageModel();
+
+      applyHandlerVisibilityUI();
+
+      document.getElementById("currentDocNameLabel").textContent = state.docId
+        ? `【已存档】${state.docTitle}（存档已冻结，修改不会自动覆盖）`
+        : `${state.docTitle || "未命名草稿"}（未建独立存档）`;
+
+      const lastPage = pages[pages.length - 1];
+      document.getElementById("pageSummaryLabel").textContent =
+        `共 ${pages.length} 页（第 ${pages.length} 页含 ${lastPage.blankCount} 个空行，每页严格 17 行）`;
+
+      const container = document.getElementById("pagesContainer");
+      container.innerHTML = "";
+
+      pages.forEach((page, pIdx) => {
+        const pageDiv = document.createElement("div");
+        pageDiv.className = "a4-page";
+
+        let rowsHtml = "";
+
+        page.items.forEach(({ row, globalIndex, amountDisplay }) => {
+          const unitOptionsHtml = buildUnitOptions(row.unit);
+          const qtyWidth = getQtyInputWidth(row.qty);
+          const toolsHtml = `
+            <div class="row-tools">
+              <button class="row-tool-btn" title="上移" onclick="moveRow(${globalIndex}, -1)">↑</button>
+              <button class="row-tool-btn" title="下移" onclick="moveRow(${globalIndex}, 1)">↓</button>
+              <button class="row-tool-btn" title="复制此行" onclick="duplicateRow(${globalIndex})">复制</button>
+              <button class="row-tool-btn del" title="删除此行" onclick="deleteRow(${globalIndex})">删</button>
+            </div>
+          `;
+
+          rowsHtml += `
+            <tr class="data-row">
+              <td class="col-date">
+                <input class="cell-input" value="${escapeHtml(row.date)}" onchange="updateCell(${globalIndex}, 'date', this.value)" />
+              </td>
+              <td class="col-content">
+                <textarea rows="1" class="cell-textarea" oninput="autoResizeTextarea(this)" onchange="updateCell(${globalIndex}, 'content', this.value)">${escapeHtml(row.content)}</textarea>
+              </td>
+              <td class="col-qty">
+                <div class="qty-cell-wrap">
+                  <input type="number" step="any" class="qty-num-input" style="width:${qtyWidth};" value="${escapeHtml(row.qty)}" oninput="updateCell(${globalIndex}, 'qty', this.value, true, this)" />
+                  <select class="qty-unit-select" style="width:${getUnitSelectWidth(row.unit)};" onchange="updateCell(${globalIndex}, 'unit', this.value)">
+                    ${unitOptionsHtml}
+                  </select>
+                </div>
+              </td>
+              <td class="col-price">
+                <input type="number" step="any" class="cell-input" value="${escapeHtml(row.price)}" oninput="updateCell(${globalIndex}, 'price', this.value, true)" />
+              </td>
+              <td class="col-amount">
+                <span id="rowAmount_${globalIndex}">${amountDisplay}</span>
+                ${!showHandler ? toolsHtml : ""}
+              </td>
+              <td class="col-handler">
+                <input class="cell-input" value="${escapeHtml(row.handler)}" onchange="updateCell(${globalIndex}, 'handler', this.value)" />
+                ${showHandler ? toolsHtml : ""}
+              </td>
+            </tr>
+          `;
+        });
+
+        if (page.hasTotal) {
+          rowsHtml += `
+            <tr class="total-row">
+              <td class="col-date"></td>
+              <td class="col-content">合&nbsp;&nbsp;&nbsp;&nbsp;计</td>
+              <td class="col-qty"></td>
+              <td class="col-price"></td>
+              <td class="col-amount" id="totalAmountCell">${totalDisplay}</td>
+              <td class="col-handler"></td>
+            </tr>
+          `;
+        }
+
+        for (let b = 0; b < page.blankCount; b++) {
+          rowsHtml += `
+            <tr class="blank-row" title="点击此空行可快速定位到上方录入新项目" onclick="document.getElementById('inContent').focus()">
+              <td class="col-date"></td>
+              <td class="col-content"></td>
+              <td class="col-qty"></td>
+              <td class="col-price"></td>
+              <td class="col-amount"></td>
+              <td class="col-handler"></td>
+            </tr>
+          `;
+        }
+
+        pageDiv.innerHTML = `
+          <div class="page-tag">A4 第 ${pIdx + 1} / ${pages.length} 页（共 17 行）</div>
+          <div class="doc-container">
+            <div class="doc-header">
+              <span class="doc-header-label">单位名称：</span>
+              <input type="text" class="doc-org-input" value="${escapeHtml(state.orgName)}" oninput="handleOrgChange(this.value, this)" />
+            </div>
+            <table class="classic-table ${showHandler ? "" : "hide-handler"}">
+              <thead>
+                <tr>
+                  <th class="col-date">日期</th>
+                  <th class="col-content">内&nbsp;&nbsp;&nbsp;&nbsp;容</th>
+                  <th class="col-qty">数量</th>
+                  <th class="col-price">单价</th>
+                  <th class="col-amount">金额</th>
+                  <th class="col-handler">经手人</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        container.appendChild(pageDiv);
+        pageDiv.querySelectorAll(".cell-textarea").forEach(autoResizeTextarea);
+      });
+    }
+
+    function autoResizeTextarea(el) {
+      el.style.height = "auto";
+      el.style.height = Math.max(29, el.scrollHeight) + "px";
+    }
+
+    function buildUnitOptions(currentUnit) {
+      const units = [...PRESET_UNITS];
+      if (currentUnit && !units.includes(currentUnit)) {
+        units.unshift(currentUnit);
+      }
+      return units
+        .map((u) => `<option value="${escapeHtml(u)}" ${u === currentUnit ? "selected" : ""}>${escapeHtml(u)}</option>`)
+        .join("");
+    }
+
+    function escapeHtml(val) {
+      if (val === null || val === undefined) return "";
+      return String(val)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function updateCell(index, field, value, liveNumeric = false, inputEl = null) {
+      if (!state.rows[index]) return;
+      if (field === "qty" || field === "price") {
+        state.rows[index][field] = value === "" ? "" : parseFloat(value);
+      } else {
+        state.rows[index][field] = value;
+      }
+
+      if (field === "qty" && inputEl) {
+        inputEl.style.width = getQtyInputWidth(value);
+      }
+
+      if (liveNumeric) {
+        const amtEl = document.getElementById(`rowAmount_${index}`);
+        if (amtEl) amtEl.textContent = rowAmountDisplay(state.rows[index]);
+        const totalEl = document.getElementById("totalAmountCell");
+        if (totalEl) totalEl.textContent = formatMoney(calcTotalAmount(state.rows));
+        saveCurrentState("修改明细数值", false);
+      } else {
+        saveCurrentState("编辑表格内容", true);
+        renderTable();
+      }
+    }
+
+    function handleOrgChange(val, sourceInput) {
+      state.orgName = val;
+      document.querySelectorAll(".doc-org-input").forEach((el) => {
+        if (el !== sourceInput) el.value = val;
+      });
+      saveCurrentState("修改单位名称", false);
+    }
+
+    function updatePreviewAmount() {
+      const q = parseFloat(document.getElementById("inQty").value);
+      const p = parseFloat(document.getElementById("inPrice").value);
+      const preview = document.getElementById("inAmountPreview");
+      if (!isNaN(q) && !isNaN(p)) {
+        preview.textContent = formatMoney(q * p);
+      } else {
+        preview.textContent = "0";
+      }
+    }
+
+    function addRowFromInput() {
+      closeUnitPopover();
+      const date = document.getElementById("inDate").value.trim();
+      const content = document.getElementById("inContent").value.trim();
+      const qtyRaw = document.getElementById("inQty").value.trim();
+      const unit = document.getElementById("inUnit").value.trim() || "个";
+      const priceRaw = document.getElementById("inPrice").value.trim();
+      const handler = state.showHandler !== false ? document.getElementById("inHandler").value.trim() : "";
+
+      if (!content && !qtyRaw && !priceRaw) {
+        showToast("请至少填写“内容”或数量单价");
+        document.getElementById("inContent").focus();
+        return;
+      }
+
+      recordSnapshot("添加行前自动备份");
+
+      state.rows.push({
+        date,
+        content,
+        qty: qtyRaw === "" ? "" : parseFloat(qtyRaw),
+        unit,
+        price: priceRaw === "" ? "" : parseFloat(priceRaw),
+        handler
+      });
+
+      saveCurrentState("新增明细行", true, true);
+      renderTable();
+
+      document.getElementById("inContent").value = "";
+      document.getElementById("inQty").value = "";
+      document.getElementById("inPrice").value = "";
+      document.getElementById("inAmountPreview").textContent = "0";
+      document.getElementById("inContent").focus();
+      showToast("已添加至合计上方");
+    }
+
+    function moveRow(index, dir) {
+      const target = index + dir;
+      if (target < 0 || target >= state.rows.length) return;
+      recordSnapshot("调整行顺序前备份");
+      const temp = state.rows[index];
+      state.rows[index] = state.rows[target];
+      state.rows[target] = temp;
+      saveCurrentState("调整行顺序", true, true);
+      renderTable();
+    }
+
+    function duplicateRow(index) {
+      recordSnapshot("复制行前备份");
+      const copy = JSON.parse(JSON.stringify(state.rows[index]));
+      state.rows.splice(index + 1, 0, copy);
+      saveCurrentState("复制明细行", true, true);
+      renderTable();
+      showToast("已复制该行");
+    }
+
+    function deleteRow(index) {
+      recordSnapshot("删除行前自动防覆盖备份");
+      state.rows.splice(index, 1);
+      saveCurrentState("删除明细行", true, true);
+      renderTable();
+      showToast("已删除该行（可在历史快照中找回）");
+    }
+
+    async function clearAllRows() {
+      if (state.rows.length === 0) return;
+      if (!(await showConfirmDialog("确定要清空当前所有明细行吗？（系统已自动保存清空前快照，不会丢失数据）"))) return;
+      recordSnapshot("清空所有明细前备份");
+      state.rows = [];
+      saveCurrentState("清空明细行", true, true);
+      renderTable();
+      showToast("已清空，原数据已存入历史快照");
+    }
+
+    async function createNewBlankDoc() {
+      if (state.rows.length > 0 && !state.docId) {
+        const autoSave = await showConfirmDialog("当前单据尚未建立独立命名存档。是否先将其存入【独立存档库】再新建空白单据？\n（点“取消”也会在历史快照中保留当前内容）", "新建空白单据");
+        if (autoSave) {
+          await saveAsArchive(true);
+        } else {
+          recordSnapshot("新建空白单据前自动备份");
+        }
+      } else {
+        recordSnapshot("切换新单据前自动备份");
+      }
+
+      const d = new Date();
+      const defaultTitle = `${d.getMonth() + 1}月${d.getDate()}日采购清单`;
+      const title = await showPromptDialog("新建单据", defaultTitle, "请输入新单据的存档名称：");
+      if (title === null) return;
+
+      state = createEmptyState(
+        title.trim() || defaultTitle,
+        state.orgName || "",
+        state.showHandler !== false
+      );
+      saveCurrentState("新建空白单据", true, true);
+      renderTable();
+      showToast("已新建空白单据，原单据已安全保留");
+    }
+
+    async function saveAsArchive(silent = false) {
+      const defaultName = `${state.orgName || "清单"}_${nowString().slice(0, 10)}（合计${formatMoney(calcTotalAmount(state.rows))}元）`;
+      const name = silent ? defaultName : await showPromptDialog("另存为独立存档", defaultName, "请输入存档名称（将创建独立存档，不会覆盖原有存档）：");
+      if (!name) return;
+
+      const archives = getArchives();
+      const newId = "arc_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+      state.docId = newId;
+      state.docTitle = name.trim();
+
+      archives.unshift({
+        id: newId,
+        title: state.docTitle,
+        orgName: state.orgName,
+        rowCount: state.rows.length,
+        total: calcTotalAmount(state.rows),
+        createdAt: nowString(),
+        updatedAt: nowString(),
+        data: JSON.parse(JSON.stringify(state))
+      });
+
+      setArchives(archives);
+      saveCurrentState("创建独立存档", true);
+      renderTable();
+      if (!silent) showToast(`已安全存档为：${state.docTitle}`);
+    }
+
+    function openDrawer(tab = "archives") {
+      activeDrawerTab = tab;
+      document.getElementById("drawerBackdrop").classList.add("open");
+      document.getElementById("historyDrawer").classList.add("open");
+      switchDrawerTab(tab);
+    }
+
+    function closeDrawer() {
+      document.getElementById("drawerBackdrop").classList.remove("open");
+      document.getElementById("historyDrawer").classList.remove("open");
+    }
+
+    function switchDrawerTab(tab) {
+      activeDrawerTab = tab;
+      document.getElementById("tabArchives").classList.toggle("active", tab === "archives");
+      document.getElementById("tabSnapshots").classList.toggle("active", tab === "snapshots");
+      renderDrawerContent();
+    }
+
+    function renderDrawerContent() {
+      const container = document.getElementById("drawerContent");
+      if (activeDrawerTab === "archives") {
+        const archives = getArchives();
+        if (archives.length === 0) {
+          container.innerHTML = `<p style="color:#64748b; font-size:13px; text-align:center; margin-top:40px;">暂无独立存档。<br/>点击顶部绿色按钮“另存为独立存档”即可永久保存当前单据。</p>`;
+          return;
+        }
+        container.innerHTML = archives
+          .map(
+            (a) => `
+          <div class="history-item" style="${a.id === state.docId ? "border-color:#1d4ed8; background:#eff6ff;" : ""}">
+            <div class="history-item-top">
+              <div class="history-title">${escapeHtml(a.title)} ${a.id === state.docId ? '<span style="color:#1d4ed8;font-size:11px;">[当前正在编辑]</span>' : ""}</div>
+            </div>
+            <div class="history-meta">
+              单位：${escapeHtml(a.orgName || "未填")} · 共 ${a.rowCount} 项 · 合计：<strong>${formatMoney(a.total)}</strong><br/>
+              更新时间：${a.updatedAt}
+            </div>
+            <div class="history-actions">
+              <button class="btn-primary" style="padding:4px 9px; font-size:12px;" onclick="loadArchive('${a.id}')">打开编辑</button>
+              ${a.id === state.docId ? `<button class="btn-success" style="padding:4px 9px; font-size:12px;" onclick="updateCurrentArchive()">保存修改到此存档</button>` : ""}
+              <button class="btn-outline" style="padding:4px 9px; font-size:12px;" onclick="cloneArchive('${a.id}')">复制为新单据</button>
+              <button class="btn-danger-outline" style="padding:4px 9px; font-size:12px;" onclick="deleteArchive('${a.id}')">删除</button>
+            </div>
+          </div>
+        `
+          )
+          .join("");
+      } else {
+        const snapshots = getSnapshots();
+        if (snapshots.length === 0) {
+          container.innerHTML = `<p style="color:#64748b; font-size:13px; text-align:center; margin-top:40px;">暂无自动历史快照。</p>`;
+          return;
+        }
+        container.innerHTML =
+          `<div style="font-size:12px; color:#475569; margin-bottom:10px; background:#f8fafc; padding:8px; border-radius:5px;">
+            💡 每次增删改或清空前，系统均会自动在此留下版本快照。误操作后点击“恢复到此版本”即可无损找回。
+          </div>` +
+          snapshots
+            .map(
+              (s) => `
+            <div class="history-item">
+              <div class="history-item-top">
+                <div class="history-title">${s.time} · <span style="color:#059669;">${escapeHtml(s.reason)}</span></div>
+              </div>
+              <div class="history-meta">
+                单据：${escapeHtml(s.docTitle)}（${escapeHtml(s.orgName)}）<br/>
+                明细：${s.rowCount} 行 · 合计金额：<strong>${formatMoney(s.total)}</strong>
+              </div>
+              <div class="history-actions">
+                <button class="btn-outline" style="padding:4px 9px; font-size:12px;" onclick="restoreSnapshot('${s.id}')">⏪ 恢复到此版本</button>
+              </div>
+            </div>
+          `
+            )
+            .join("");
+      }
+    }
+
+    /* Manual write-back to the archive being edited (the only archive-overwrite entry) */
+    async function updateCurrentArchive() {
+      if (!state.docId) {
+        showToast("当前单据还没有独立存档，请先点“另存为独立存档”");
+        return;
+      }
+      const archives = getArchives();
+      const idx = archives.findIndex((a) => a.id === state.docId);
+      if (idx === -1) {
+        showToast("原存档已不存在，请用“另存为独立存档”重新保存");
+        return;
+      }
+      if (!(await showConfirmDialog(`确定把当前修改保存到存档“${archives[idx].title}”吗？这会覆盖存档里原来的内容。`, "保存修改到存档"))) return;
+      recordSnapshot("覆盖存档前自动备份");
+      archives[idx].updatedAt = nowString();
+      archives[idx].orgName = state.orgName;
+      archives[idx].title = state.docTitle;
+      archives[idx].total = calcTotalAmount(state.rows);
+      archives[idx].rowCount = state.rows.length;
+      archives[idx].data = JSON.parse(JSON.stringify(state));
+      setArchives(archives);
+      renderDrawerContent();
+      showToast(`已保存修改到存档：${state.docTitle}`);
+    }
+
+    function loadArchive(id) {
+      const archives = getArchives();
+      const target = archives.find((a) => a.id === id);
+      if (!target) return;
+      recordSnapshot("切换存档前自动备份");
+      state = JSON.parse(JSON.stringify(target.data));
+      if (state.showHandler === undefined) state.showHandler = true;
+      state.docId = target.id;
+      saveCurrentState("打开独立存档", false, true);
+      renderTable();
+      closeDrawer();
+      showToast(`已打开存档：${target.title}（存档已冻结，修改不会自动覆盖）`);
+    }
+
+    function cloneArchive(id) {
+      const archives = getArchives();
+      const target = archives.find((a) => a.id === id);
+      if (!target) return;
+      recordSnapshot("复制存档前自动备份");
+      state = JSON.parse(JSON.stringify(target.data));
+      if (state.showHandler === undefined) state.showHandler = true;
+      state.docId = null;
+      state.docTitle = `${target.title} - 副本`;
+      saveCurrentState("复制为新单据", true, true);
+      renderTable();
+      closeDrawer();
+      showToast("已基于该存档创建独立副本，修改不会影响原存档");
+    }
+
+    async function deleteArchive(id) {
+      if (!(await showConfirmDialog("确定删除此条独立存档吗？"))) return;
+      const archives = getArchives().filter((a) => a.id !== id);
+      setArchives(archives);
+      if (state.docId === id) {
+        state.docId = null;
+        saveCurrentState();
+        renderTable();
+      }
+      renderDrawerContent();
+      showToast("已删除该存档");
+    }
+
+    function restoreSnapshot(id) {
+      const snapshots = getSnapshots();
+      const target = snapshots.find((s) => s.id === id);
+      if (!target) return;
+      recordSnapshot("回滚历史版本前自动备份");
+      state = JSON.parse(JSON.stringify(target.data));
+      if (state.showHandler === undefined) state.showHandler = true;
+      state.docId = null;
+      state.docTitle = `${target.docTitle}（恢复于 ${target.time.slice(11)}）`;
+      saveCurrentState("恢复历史快照", true, true);
+      renderTable();
+      closeDrawer();
+      showToast("已成功恢复到选定时间点的版本！");
+    }
+
+    function getExportBaseName() {
+      const org = (state.orgName || "").trim();
+      const raw = org || (state.docTitle || "").trim() || "采购制作清单";
+      return raw.replace(/[\\/:*?"<>|]/g, "_");
+    }
+
+    /* 独立功能 1：直接连接打印机打印 */
+    function directPrint() {
+      closeUnitPopover();
+      const origTitle = document.title;
+      document.title = getExportBaseName();
+      window.print();
+      document.title = origTitle;
+    }
+
+    /* 独立功能 2：一键导出 PDF 文件（直接下载 .pdf，离线/断网自动回退至打印另存 PDF） */
+    async function exportToPDF() {
+      closeUnitPopover();
+      const fileName = `${getExportBaseName()}.pdf`;
+
+      if (typeof window.html2pdf === "undefined") {
+        const origTitle = document.title;
+        document.title = fileName.replace(/\.pdf$/i, "");
+        showToast("请在弹出窗口中选择“另存为 PDF”");
+        setTimeout(() => {
+          window.print();
+          document.title = origTitle;
+        }, 200);
+        return;
+      }
+
+      const btn = document.getElementById("exportPdfBtn");
+      const origBtnText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = "⏳ 正在生成 PDF...";
+
+      let wrapper = null;
+      try {
+        const { pages, totalDisplay: totalVal, showHandler } = getPageModel();
+
+        // 构建用于渲染 PDF 的纯净容器，将所有 input/select 转为纯文本节点确保宋体字形清晰无边框干扰
+        // 注意：不要给 wrapper 设 position:absolute 或 z-index:-1，也不要手动挂到 body 上；
+        // html2pdf 会自带隔离容器挂载并克隆渲染，若保留 absolute/z-index:-1 会导致容器高度塌陷或被遮挡成空白。
+        wrapper = document.createElement("div");
+        wrapper.style.width = "1000px";
+        wrapper.style.margin = "0";
+        wrapper.style.background = "#ffffff";
+
+        const cellBorder = "border-right:0.5px solid #000; border-bottom:0.5px solid #000;";
+
+        pages.forEach((page, pIdx) => {
+          const pageBox = document.createElement("div");
+          pageBox.style.width = "1000px";
+          pageBox.style.padding = "18px 24px";
+          pageBox.style.background = "#ffffff";
+          pageBox.style.fontFamily = '"SimSun", "宋体", "NSimSun", serif';
+          pageBox.style.color = "#000000";
+          if (pIdx < pages.length - 1) {
+            pageBox.style.pageBreakAfter = "always";
+          }
+
+          let rowsHtml = "";
+          page.items.forEach(({ row: r, qtyDisplay, priceDisplay, amountDisplay }) => {
+            rowsHtml += `
+              <tr>
+                <td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(r.date)}</td>
+                <td style="${cellBorder} height:31px; padding:4px 6px; line-height:1.35; text-align:center; word-break:break-word; overflow-wrap:anywhere; white-space:pre-wrap;">${escapeHtml(r.content)}</td>
+                <td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(qtyDisplay)}</td>
+                <td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(priceDisplay)}</td>
+                <td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(amountDisplay)}</td>
+                ${showHandler ? `<td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(r.handler)}</td>` : ""}
+              </tr>
+            `;
+          });
+
+          if (page.hasTotal) {
+            rowsHtml += `
+              <tr>
+                <td style="${cellBorder} height:31px; text-align:center;"></td>
+                <td style="${cellBorder} height:31px; text-align:center; font-size:16px;">合&nbsp;&nbsp;&nbsp;&nbsp;计</td>
+                <td style="${cellBorder} height:31px; text-align:center;"></td>
+                <td style="${cellBorder} height:31px; text-align:center;"></td>
+                <td style="${cellBorder} height:31px; text-align:center; font-size:16px;">${totalVal}</td>
+                ${showHandler ? `<td style="${cellBorder} height:31px; text-align:center;"></td>` : ""}
+              </tr>
+            `;
+          }
+
+          for (let b = 0; b < page.blankCount; b++) {
+            rowsHtml += `
+              <tr>
+                <td style="${cellBorder} height:31px;"></td>
+                <td style="${cellBorder} height:31px;"></td>
+                <td style="${cellBorder} height:31px;"></td>
+                <td style="${cellBorder} height:31px;"></td>
+                <td style="${cellBorder} height:31px;"></td>
+                ${showHandler ? `<td style="${cellBorder} height:31px;"></td>` : ""}
+              </tr>
+            `;
+          }
+
+          pageBox.innerHTML = `
+            <div style="display:flex; align-items:flex-end; margin-bottom:8px; padding-left:16px; font-size:19px;">
+              <span style="white-space:nowrap; letter-spacing:1px;">单位名称：</span>
+              <span style="display:inline-block; min-width:340px; border-bottom:0.5px solid #000; text-align:center; padding:2px 12px;">
+                ${escapeHtml(state.orgName)}
+              </span>
+            </div>
+            <table style="width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; border-top:0.5px solid #000; border-left:0.5px solid #000; font-size:15px;">
+              <thead>
+                <tr>
+                  <th style="${cellBorder} height:34px; width:9.5%; font-weight:normal; font-size:17px;">日期</th>
+                  <th style="${cellBorder} height:34px; width:${showHandler ? "52.5%" : "64%"}; font-weight:normal; font-size:17px;">内&nbsp;&nbsp;&nbsp;&nbsp;容</th>
+                  <th style="${cellBorder} height:34px; width:9.5%; font-weight:normal; font-size:17px;">数量</th>
+                  <th style="${cellBorder} height:34px; width:8.5%; font-weight:normal; font-size:17px;">单价</th>
+                  <th style="${cellBorder} height:34px; width:8.5%; font-weight:normal; font-size:17px;">金额</th>
+                  ${showHandler ? `<th style="${cellBorder} height:34px; width:11.5%; font-weight:normal; font-size:17px;">经手人</th>` : ""}
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          `;
+
+          wrapper.appendChild(pageBox);
+        });
+
+        const opt = {
+          margin: [8, 8, 8, 8],
+          filename: fileName,
+          image: { type: "png" },
+          html2canvas: {
+            scale: 4,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            logging: false,
+            scrollX: 0,
+            scrollY: 0,
+            x: 0,
+            y: 0,
+            width: 1000,
+            windowWidth: 1100
+          },
+          jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+          pagebreak: { mode: ["css", "legacy"] }
+        };
+
+        await window.html2pdf().set(opt).from(wrapper).save();
+        showToast(`已成功导出 PDF：${fileName}`);
+      } catch (err) {
+        const origTitle = document.title;
+        document.title = fileName.replace(/\.pdf$/i, "");
+        window.print();
+        document.title = origTitle;
+      } finally {
+        if (wrapper && wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+        btn.disabled = false;
+        btn.innerHTML = origBtnText;
+      }
+    }
+
+    // ===== Real .xlsx export: minimal OOXML package built locally (no library, no CDN) =====
+    // Quantity / price / amount are stored as NUMBERS (amount column gets a SUM formula on the
+    // total row), so the file can be re-calculated in Excel/WPS instead of being dead text.
+    function escapeXml(val) {
+      if (val === null || val === undefined) return "";
+      return String(val)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    const CRC_TABLE = (() => {
+      const table = new Int32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        table[n] = c;
+      }
+      return table;
+    })();
+
+    function crc32(bytes) {
+      let crc = -1;
+      for (let i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ bytes[i]) & 0xff];
+      return (crc ^ -1) >>> 0;
+    }
+
+    // ZIP with stored (uncompressed) entries
+    function buildZip(files) {
+      const enc = new TextEncoder();
+      const chunks = [];
+      const central = [];
+      let offset = 0;
+      const u16 = (v) => [v & 0xff, (v >>> 8) & 0xff];
+      const u32 = (v) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+      for (const f of files) {
+        const nameBytes = enc.encode(f.name);
+        const data = enc.encode(f.content);
+        const crc = crc32(data);
+        const local = new Uint8Array([
+          ...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0),
+          ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length),
+          ...u16(nameBytes.length), ...u16(0)
+        ]);
+        chunks.push(local, nameBytes, data);
+        central.push({ nameBytes, crc, size: data.length, offset });
+        offset += local.length + nameBytes.length + data.length;
+      }
+      const centralStart = offset;
+      for (const c of central) {
+        const rec = new Uint8Array([
+          ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0),
+          ...u16(0), ...u16(0x21), ...u32(c.crc), ...u32(c.size), ...u32(c.size),
+          ...u16(c.nameBytes.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
+          ...u32(0), ...u32(c.offset)
+        ]);
+        chunks.push(rec, c.nameBytes);
+        offset += rec.length + c.nameBytes.length;
+      }
+      const end = new Uint8Array([
+        ...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(central.length), ...u16(central.length),
+        ...u32(offset - centralStart), ...u32(centralStart), ...u16(0)
+      ]);
+      chunks.push(end);
+      const total = chunks.reduce((a, c) => a + c.length, 0);
+      const out = new Uint8Array(total);
+      let pos = 0;
+      for (const c of chunks) { out.set(c, pos); pos += c.length; }
+      return out;
+    }
+
+    function buildXlsxBytes() {
+      // Full paper format, page by page: title row + header row + exactly 17 body rows
+      // (data rows + total row + blank rows), all bordered — same layout as the printed sheet.
+      const { pages, showHandler } = getPageModel();
+      const total = calcTotalAmount(state.rows);
+      const colCount = showHandler ? 6 : 5;
+      const lastCol = showHandler ? "F" : "E";
+      const colLetter = (i) => String.fromCharCode(65 + i);
+      const strCell = (ref, val, style) => `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(val)}</t></is></c>`;
+      const numCell = (ref, val, style) => `<c r="${ref}" s="${style}"><v>${val}</v></c>`;
+      const emptyCell = (ref, style) => `<c r="${ref}" s="${style}"/>`;
+      const isNum = (v) => v !== "" && v !== null && v !== undefined && !isNaN(parseFloat(v));
+
+      let sheetRows = "";
+      const merges = [];
+      const amountRanges = [];
+      let rn = 0;
+      const emitRow = (cellsHtml, ht) => {
+        sheetRows += `<row r="${rn}" ht="${ht}" customHeight="1">${cellsHtml}</row>`;
+      };
+
+      pages.forEach((page) => {
+        // title row
+        rn++;
+        merges.push(`A${rn}:${lastCol}${rn}`);
+        let titleCells = strCell(`A${rn}`, `单位名称：${state.orgName || ""}`, 3);
+        for (let c = 1; c < colCount; c++) titleCells += emptyCell(`${colLetter(c)}${rn}`, 3);
+        emitRow(titleCells, 30);
+        // header row
+        rn++;
+        const headers = showHandler
+          ? ["日期", "内容", "数量", "单价", "金额", "经手人"]
+          : ["日期", "内容", "数量", "单价", "金额"];
+        emitRow(headers.map((h, i) => strCell(`${colLetter(i)}${rn}`, h, 4)).join(""), 28);
+        // data rows
+        const bodyStart = rn + 1;
+        page.items.forEach(({ row: r, qtyDisplay }) => {
+          rn++;
+          let cells = "";
+          cells += r.date ? strCell(`A${rn}`, r.date, 1) : emptyCell(`A${rn}`, 1);
+          cells += r.content ? strCell(`B${rn}`, r.content, 1) : emptyCell(`B${rn}`, 1);
+          cells += qtyDisplay ? strCell(`C${rn}`, qtyDisplay, 1) : emptyCell(`C${rn}`, 1);
+          cells += isNum(r.price) ? numCell(`D${rn}`, parseFloat(r.price), 2) : emptyCell(`D${rn}`, 2);
+          cells += isNum(r.qty) && isNum(r.price) ? numCell(`E${rn}`, calcRowAmount(r), 2) : emptyCell(`E${rn}`, 2);
+          if (showHandler) cells += r.handler ? strCell(`F${rn}`, r.handler, 1) : emptyCell(`F${rn}`, 1);
+          emitRow(cells, 24);
+        });
+        if (page.items.length > 0) amountRanges.push([bodyStart, rn]);
+        // total row (SUM spans the amount cells of every page)
+        if (page.hasTotal) {
+          rn++;
+          let totalCells = emptyCell(`A${rn}`, 1) + strCell(`B${rn}`, "合    计", 5);
+          totalCells += emptyCell(`C${rn}`, 1) + emptyCell(`D${rn}`, 2);
+          if (amountRanges.length > 0) {
+            const formula = amountRanges.map(([a, b]) => (a === b ? `E${a}` : `E${a}:E${b}`)).join(",");
+            totalCells += `<c r="E${rn}" s="2"><f>SUM(${formula})</f><v>${total}</v></c>`;
+          } else {
+            totalCells += emptyCell(`E${rn}`, 2);
+          }
+          if (showHandler) totalCells += emptyCell(`F${rn}`, 1);
+          emitRow(totalCells, 24);
+        }
+        // blank rows fill the page to the full 17 body rows, borders included
+        for (let b = 0; b < page.blankCount; b++) {
+          rn++;
+          let blank = "";
+          for (let c = 0; c < colCount; c++) blank += emptyCell(`${colLetter(c)}${rn}`, c === 3 || c === 4 ? 2 : 1);
+          emitRow(blank, 24);
+        }
+      });
+
+      const widths = showHandler ? [12, 62, 12, 10, 12, 14] : [12, 70, 12, 10, 12];
+      const cols = widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("");
+      const mergeXml = merges.map((m) => `<mergeCell ref="${m}"/>`).join("");
+
+      const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${sheetRows}</sheetData><mergeCells count="${merges.length}">${mergeXml}</mergeCells></worksheet>`;
+
+      const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="0"/><fonts count="3"><font><sz val="12"/><name val="SimSun"/></font><font><sz val="14"/><name val="SimSun"/></font><font><b/><sz val="12"/><name val="SimSun"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="2"><border><left/><right/><top/><bottom/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs></styleSheet>`;
+
+      const files = [
+        { name: "[Content_Types].xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
+        { name: "_rels/.rels", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+        { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="清单" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+        { name: "xl/_rels/workbook.xml.rels", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
+        { name: "xl/worksheets/sheet1.xml", content: sheetXml },
+        { name: "xl/styles.xml", content: stylesXml }
+      ];
+      return buildZip(files);
+    }
+
+    function exportToExcel() {
+      const bytes = buildXlsxBytes();
+      const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${getExportBaseName()}.xlsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("已导出 Excel (.xlsx)：完整单据格式（含每页空白行与合计），金额为数值带 SUM 公式");
+    }
+
+    ["inDate", "inContent", "inQty", "inUnit", "inPrice", "inHandler"].forEach((id) => {
+      document.getElementById(id).addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addRowFromInput();
+        }
+      });
+    });
+
+    /* ===== 本地文件自动同步（File System Access API + IndexedDB 句柄持久化） ===== */
+    let localFileHandle = null;
+    let localFileNeedsPermission = false;
+    let localSyncTimer = null;
+    const FS_DB_NAME = "procurement_tool_fs_v1";
+    const FS_STORE_NAME = "handles";
+
+    function openFsDb() {
+      return new Promise((resolve, reject) => {
+        if (typeof indexedDB === "undefined") return reject(new Error("no indexedDB"));
+        const req = indexedDB.open(FS_DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains(FS_STORE_NAME)) {
+            req.result.createObjectStore(FS_STORE_NAME);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function saveFileHandleToDb(handle) {
+      try {
+        const db = await openFsDb();
+        const tx = db.transaction(FS_STORE_NAME, "readwrite");
+        tx.objectStore(FS_STORE_NAME).put(handle, "archiveFile");
+      } catch {}
+    }
+
+    async function loadFileHandleFromDb() {
+      try {
+        const db = await openFsDb();
+        return await new Promise((resolve) => {
+          const tx = db.transaction(FS_STORE_NAME, "readonly");
+          const req = tx.objectStore(FS_STORE_NAME).get("archiveFile");
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        });
+      } catch {
+        return null;
+      }
+    }
+
+    function updateLocalFileStatusUI(syncedTime = null) {
+      const el = document.getElementById("localFileStatusText");
+      const btn = document.getElementById("localFileStatusBtn");
+      if (!el || !btn) return;
+      if (localFileHandle) {
+        if (localFileNeedsPermission) {
+          el.textContent = `🔄 点击恢复本地同步（${localFileHandle.name}）`;
+          btn.style.borderColor = "#f59e0b";
+          btn.style.background = "#fffbeb";
+          btn.style.color = "#b45309";
+        } else {
+          const suffix = syncedTime ? ` · ${syncedTime}` : "";
+          el.textContent = `📁 已同步本地：${localFileHandle.name}${suffix}`;
+          btn.style.borderColor = "#10b981";
+          btn.style.background = "#ecfdf5";
+          btn.style.color = "#047857";
+        }
+      } else {
+        el.textContent = "📁 本地文件：未绑定（点击绑定防清缓存）";
+        btn.style.borderColor = "";
+        btn.style.background = "";
+        btn.style.color = "";
+      }
+    }
+
+    async function writeBackupToBoundFile() {
+      if (!localFileHandle || localFileNeedsPermission) return false;
+      try {
+        const perm = await localFileHandle.queryPermission({ mode: "readwrite" });
+        if (perm !== "granted") {
+          localFileNeedsPermission = true;
+          updateLocalFileStatusUI();
+          return false;
+        }
+        const writable = await localFileHandle.createWritable();
+        await writable.write(JSON.stringify(collectBackupData(), null, 2));
+        await writable.close();
+        updateLocalFileStatusUI(nowString().slice(11));
+        return true;
+      } catch {
+        localFileNeedsPermission = true;
+        updateLocalFileStatusUI();
+        return false;
+      }
+    }
+
+    function scheduleLocalFileSync(immediate = false) {
+      if (!localFileHandle || localFileNeedsPermission) return;
+      clearTimeout(localSyncTimer);
+      if (immediate) {
+        writeBackupToBoundFile();
+      } else {
+        localSyncTimer = setTimeout(() => writeBackupToBoundFile(), 450);
+      }
+    }
+
+    async function handleLocalFileStatusClick() {
+      if (localFileHandle && localFileNeedsPermission) {
+        try {
+          const perm = await localFileHandle.requestPermission({ mode: "readwrite" });
+          if (perm === "granted") {
+            localFileNeedsPermission = false;
+            await writeBackupToBoundFile();
+            showToast(`已恢复自动同步至：${localFileHandle.name}`);
+            return;
+          }
+        } catch {}
+      }
+      await bindLocalArchiveFile();
+    }
+
+    async function bindLocalArchiveFile() {
+      if (typeof window.showSaveFilePicker !== "function") {
+        exportBackup();
+        showToast("当前浏览器不支持直接绑定文件，已为你下载 .json 本地存档文件");
+        return;
+      }
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: "采购清单本地存档库.json",
+          types: [{ description: "JSON 存档文件", accept: { "application/json": [".json"] } }]
+        });
+        localFileHandle = handle;
+        localFileNeedsPermission = false;
+        await saveFileHandleToDb(handle);
+        const ok = await writeBackupToBoundFile();
+        if (ok) {
+          showToast(`已绑定本地文件「${handle.name}」，后续修改与存档将自动写入硬盘`);
+        }
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+        exportBackup();
+        showToast("无法直接绑定本地文件，已改为下载 .json 存档文件");
+      }
+    }
+
+    async function restoreLocalFileHandleOnBoot() {
+      const savedHandle = await loadFileHandleFromDb();
+      if (!savedHandle) {
+        updateLocalFileStatusUI();
+        return;
+      }
+      localFileHandle = savedHandle;
+      try {
+        const perm = await savedHandle.queryPermission({ mode: "readwrite" });
+        localFileNeedsPermission = perm !== "granted";
+      } catch {
+        localFileNeedsPermission = true;
+      }
+      updateLocalFileStatusUI();
+    }
+
+    init();
+    restoreLocalFileHandleOnBoot();
+
+    /* ===== Rust (Tauri 2) 桌面端原生落盘桥接 ===== */
+    (function setupTauriBridge() {
+      const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+      if (!invoke) return;
+
+      let tauriSyncTimer = null;
+      const syncToRustDisk = async () => {
+        try {
+          const path = await invoke("save_app_data", { payload: JSON.stringify(collectBackupData(), null, 2) });
+          const textEl = document.getElementById("localFileStatusText");
+          const btnEl = document.getElementById("localFileStatusBtn");
+          if (textEl && btnEl) {
+            textEl.textContent = "💾 桌面本地库已自动落盘 · " + nowString().slice(11);
+            btnEl.title = "本地存储路径：" + path;
+            btnEl.style.borderColor = "#10b981";
+            btnEl.style.background = "#ecfdf5";
+            btnEl.style.color = "#047857";
+          }
+        } catch (err) {
+          console.error("Rust 本地写入失败:", err);
+        }
+      };
+
+      const origSaveCurrent = window.saveCurrentState;
+      window.saveCurrentState = function (...args) {
+        origSaveCurrent.apply(this, args);
+        clearTimeout(tauriSyncTimer);
+        tauriSyncTimer = setTimeout(syncToRustDisk, 250);
+      };
+
+      const origSetArchives = window.setArchives;
+      window.setArchives = function (...args) {
+        origSetArchives.apply(this, args);
+        syncToRustDisk();
+      };
+
+      const origSetSnapshots = window.setSnapshots;
+      window.setSnapshots = function (...args) {
+        origSetSnapshots.apply(this, args);
+        clearTimeout(tauriSyncTimer);
+        tauriSyncTimer = setTimeout(syncToRustDisk, 250);
+      };
+
+      // 启动时从 Rust 磁盘存档恢复数据（即使 localStorage 被清空也能无损加载）
+      invoke("load_app_data").then(async (raw) => {
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed.current) localStorage.setItem(STORAGE_KEYS.CURRENT, JSON.stringify(parsed.current));
+            if (Array.isArray(parsed.archives)) localStorage.setItem(STORAGE_KEYS.ARCHIVES, JSON.stringify(parsed.archives));
+            if (Array.isArray(parsed.snapshots)) localStorage.setItem(STORAGE_KEYS.SNAPSHOTS, JSON.stringify(parsed.snapshots));
+            init();
+          } catch {}
+        } else {
+          await syncToRustDisk();
+        }
+        try {
+          const path = await invoke("get_data_file_path");
+          const textEl = document.getElementById("localFileStatusText");
+          const btnEl = document.getElementById("localFileStatusBtn");
+          if (textEl && btnEl) {
+            textEl.textContent = "💾 桌面本地库：已自动落盘（防清理）";
+            btnEl.title = "本地存储路径：" + path;
+            btnEl.style.borderColor = "#10b981";
+            btnEl.style.background = "#ecfdf5";
+            btnEl.style.color = "#047857";
+          }
+        } catch {}
+      }).catch(() => {});
+    })();
+  </script>
+</body>
+</html>
