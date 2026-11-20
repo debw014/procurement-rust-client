@@ -510,6 +510,13 @@
       background: #eff6ff;
       border-color: #93c5fd;
     }
+    .local-file-status {
+      cursor: default;
+    }
+    .local-file-status:hover {
+      background: #f8fafc;
+      border-color: var(--border);
+    }
     .toggle-pill input {
       margin: 0;
       cursor: pointer;
@@ -1015,9 +1022,6 @@
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
       <path d="M14 2v6h6M12 11v6M9 14h6" />
     </symbol>
-    <symbol id="icon-folder" viewBox="0 0 24 24">
-      <path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-    </symbol>
     <symbol id="icon-download" viewBox="0 0 24 24">
       <path d="M12 3v12m-5-5 5 5 5-5M5 21h14" />
     </symbol>
@@ -1060,10 +1064,6 @@
         </button>
       </div>
       <div class="toolbar-group" data-group="backup">
-        <button type="button" class="toolbar-btn" id="bindLocalFileBtn" title="绑定电脑本地 JSON 存档文件" onclick="bindLocalArchiveFile()">
-          <svg class="toolbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-folder"></use></svg>
-          <span>绑定本地文件</span>
-        </button>
         <button type="button" class="toolbar-btn" title="导出当前单据、存档与历史快照" onclick="exportBackup()">
           <svg class="toolbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-download"></use></svg>
           <span>导出备份</span>
@@ -1150,9 +1150,9 @@
       <span id="pageSummaryLabel">共 1 页（每页固定 17 行含合计与空行）</span>
     </div>
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <button type="button" id="localFileStatusBtn" class="toggle-pill" onclick="handleLocalFileStatusClick()" title="绑定电脑本地 .json 文件后，每次保存/存档都会自动写入硬盘，清理浏览器缓存也不会丢失">
-        <span id="localFileStatusText">📁 本地文件：未绑定（点击绑定防清缓存）</span>
-      </button>
+      <span id="localFileStatus" class="toggle-pill local-file-status" role="status" aria-live="polite" title="桌面端启动后自动绑定 Rust 默认数据目录">
+        <span id="localFileStatusText">📁 默认目录：等待自动绑定</span>
+      </span>
       <label class="toggle-pill" title="勾选显示“经手人”列，取消勾选则隐藏（打印与导出同步生效）">
         <input type="checkbox" id="toggleHandlerCheckbox" checked onchange="toggleHandlerColumn(this.checked)" />
         <span>显示经手人栏</span>
@@ -2549,14 +2549,6 @@
       });
     }
 
-    async function saveFileHandleToDb(handle) {
-      try {
-        const db = await openFsDb();
-        const tx = db.transaction(FS_STORE_NAME, "readwrite");
-        tx.objectStore(FS_STORE_NAME).put(handle, "archiveFile");
-      } catch {}
-    }
-
     async function loadFileHandleFromDb() {
       try {
         const db = await openFsDb();
@@ -2573,11 +2565,11 @@
 
     function updateLocalFileStatusUI(syncedTime = null) {
       const el = document.getElementById("localFileStatusText");
-      const btn = document.getElementById("localFileStatusBtn");
+      const btn = document.getElementById("localFileStatus");
       if (!el || !btn) return;
       if (localFileHandle) {
         if (localFileNeedsPermission) {
-          el.textContent = `🔄 点击恢复本地同步（${localFileHandle.name}）`;
+          el.textContent = `🔄 本地同步需要恢复权限（${localFileHandle.name}）`;
           btn.style.borderColor = "#f59e0b";
           btn.style.background = "#fffbeb";
           btn.style.color = "#b45309";
@@ -2589,7 +2581,7 @@
           btn.style.color = "#047857";
         }
       } else {
-        el.textContent = "📁 本地文件：未绑定（点击绑定防清缓存）";
+        el.textContent = "📁 默认目录：桌面端启动后自动绑定";
         btn.style.borderColor = "";
         btn.style.background = "";
         btn.style.color = "";
@@ -2627,46 +2619,6 @@
       }
     }
 
-    async function handleLocalFileStatusClick() {
-      if (localFileHandle && localFileNeedsPermission) {
-        try {
-          const perm = await localFileHandle.requestPermission({ mode: "readwrite" });
-          if (perm === "granted") {
-            localFileNeedsPermission = false;
-            await writeBackupToBoundFile();
-            showToast(`已恢复自动同步至：${localFileHandle.name}`);
-            return;
-          }
-        } catch {}
-      }
-      await bindLocalArchiveFile();
-    }
-
-    async function bindLocalArchiveFile() {
-      if (typeof window.showSaveFilePicker !== "function") {
-        exportBackup();
-        showToast("当前浏览器不支持直接绑定文件，已为你下载 .json 本地存档文件");
-        return;
-      }
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: "采购清单本地存档库.json",
-          types: [{ description: "JSON 存档文件", accept: { "application/json": [".json"] } }]
-        });
-        localFileHandle = handle;
-        localFileNeedsPermission = false;
-        await saveFileHandleToDb(handle);
-        const ok = await writeBackupToBoundFile();
-        if (ok) {
-          showToast(`已绑定本地文件「${handle.name}」，后续修改与存档将自动写入硬盘`);
-        }
-      } catch (err) {
-        if (err && err.name === "AbortError") return;
-        exportBackup();
-        showToast("无法直接绑定本地文件，已改为下载 .json 存档文件");
-      }
-    }
-
     async function restoreLocalFileHandleOnBoot() {
       const savedHandle = await loadFileHandleFromDb();
       if (!savedHandle) {
@@ -2684,7 +2636,8 @@
     }
 
     init();
-    restoreLocalFileHandleOnBoot();
+    // 桌面端只使用 Rust 默认数据目录；旧版浏览器自定义绑定不再恢复。
+    if (!window.__TAURI__) restoreLocalFileHandleOnBoot();
 
     /* ===== Rust (Tauri 2) 桌面端原生落盘桥接 ===== */
     (function setupTauriBridge() {
@@ -2696,10 +2649,10 @@
         try {
           const path = await invoke("save_app_data", { payload: JSON.stringify(collectBackupData(), null, 2) });
           const textEl = document.getElementById("localFileStatusText");
-          const btnEl = document.getElementById("localFileStatusBtn");
+          const btnEl = document.getElementById("localFileStatus");
           if (textEl && btnEl) {
-            textEl.textContent = "💾 桌面本地库已自动落盘 · " + nowString().slice(11);
-            btnEl.title = "本地存储路径：" + path;
+            textEl.textContent = "💾 默认目录已自动绑定 · 已保存 " + nowString().slice(11);
+            btnEl.title = "默认存档文件：" + path;
             btnEl.style.borderColor = "#10b981";
             btnEl.style.background = "#ecfdf5";
             btnEl.style.color = "#047857";
@@ -2745,10 +2698,10 @@
         try {
           const path = await invoke("get_data_file_path");
           const textEl = document.getElementById("localFileStatusText");
-          const btnEl = document.getElementById("localFileStatusBtn");
+          const btnEl = document.getElementById("localFileStatus");
           if (textEl && btnEl) {
-            textEl.textContent = "💾 桌面本地库：已自动落盘（防清理）";
-            btnEl.title = "本地存储路径：" + path;
+            textEl.textContent = "💾 默认目录已自动绑定 · procurement_data.json";
+            btnEl.title = "默认存档文件：" + path;
             btnEl.style.borderColor = "#10b981";
             btnEl.style.background = "#ecfdf5";
             btnEl.style.color = "#047857";
