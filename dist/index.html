@@ -136,15 +136,6 @@
       gap: 8px;
     }
 
-    .badge-save {
-      font-size: 12px;
-      background: rgba(16, 185, 129, 0.2);
-      color: #6ee7b7;
-      padding: 2px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(16, 185, 129, 0.4);
-    }
-
     .toolbar-actions {
       display: flex;
       flex: 1 1 auto;
@@ -509,13 +500,6 @@
     .toggle-pill:hover {
       background: #eff6ff;
       border-color: #93c5fd;
-    }
-    .local-file-status {
-      cursor: default;
-    }
-    .local-file-status:hover {
-      background: #f8fafc;
-      border-color: var(--border);
     }
     .toggle-pill input {
       margin: 0;
@@ -1046,7 +1030,6 @@
   <div class="toolbar" data-tauri-drag-region>
     <div class="toolbar-title">
       <span data-tauri-drag-region>📋 清单制作工具</span>
-      <span class="badge-save" id="saveStatus">已自动防覆盖保护</span>
     </div>
     <div class="toolbar-actions">
       <div class="toolbar-group" data-group="documents">
@@ -1150,9 +1133,6 @@
       <span id="pageSummaryLabel">共 1 页（每页固定 17 行含合计与空行）</span>
     </div>
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <span id="localFileStatus" class="toggle-pill local-file-status" role="status" aria-live="polite" title="桌面端启动后自动绑定 Rust 默认数据目录">
-        <span id="localFileStatusText">📁 默认目录：等待自动绑定</span>
-      </span>
       <label class="toggle-pill" title="勾选显示“经手人”列，取消勾选则隐藏（打印与导出同步生效）">
         <input type="checkbox" id="toggleHandlerCheckbox" checked onchange="toggleHandlerColumn(this.checked)" />
         <span>显示经手人栏</span>
@@ -1453,7 +1433,6 @@
         }
       }
 
-      document.getElementById("saveStatus").textContent = "已实时保存 · " + nowString().slice(11);
       updateCounts();
       scheduleLocalFileSync(immediateSnapshot);
     }
