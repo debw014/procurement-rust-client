@@ -964,6 +964,7 @@
       table.classic-table th,
       table.classic-table td {
         border-width: 0.5pt;
+        height: 36px;
       }
       .doc-org-input {
         border-bottom-width: 0.75pt;
@@ -2225,12 +2226,12 @@
           page.items.forEach(({ row: r, qtyDisplay, priceDisplay, amountDisplay }) => {
             rowsHtml += `
               <tr>
-                <td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(r.date)}</td>
-                <td style="${cellBorder} height:31px; padding:4px 6px; line-height:1.35; text-align:center; word-break:break-word; overflow-wrap:anywhere; white-space:pre-wrap;">${escapeHtml(r.content)}</td>
-                <td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(qtyDisplay)}</td>
-                <td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(priceDisplay)}</td>
-                <td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(amountDisplay)}</td>
-                ${showHandler ? `<td style="${cellBorder} height:31px; text-align:center;">${escapeHtml(r.handler)}</td>` : ""}
+                <td style="${cellBorder} height:36px; text-align:center;">${escapeHtml(r.date)}</td>
+                <td style="${cellBorder} height:36px; padding:4px 6px; line-height:1.35; text-align:center; word-break:break-word; overflow-wrap:anywhere; white-space:pre-wrap;">${escapeHtml(r.content)}</td>
+                <td style="${cellBorder} height:36px; text-align:center;">${escapeHtml(qtyDisplay)}</td>
+                <td style="${cellBorder} height:36px; text-align:center;">${escapeHtml(priceDisplay)}</td>
+                <td style="${cellBorder} height:36px; text-align:center;">${escapeHtml(amountDisplay)}</td>
+                ${showHandler ? `<td style="${cellBorder} height:36px; text-align:center;">${escapeHtml(r.handler)}</td>` : ""}
               </tr>
             `;
           });
@@ -2238,12 +2239,12 @@
           if (page.hasTotal) {
             rowsHtml += `
               <tr>
-                <td style="${cellBorder} height:31px; text-align:center;"></td>
-                <td style="${cellBorder} height:31px; text-align:center; font-size:16px;">合&nbsp;&nbsp;&nbsp;&nbsp;计</td>
-                <td style="${cellBorder} height:31px; text-align:center;"></td>
-                <td style="${cellBorder} height:31px; text-align:center;"></td>
-                <td style="${cellBorder} height:31px; text-align:center; font-size:16px;">${totalVal}</td>
-                ${showHandler ? `<td style="${cellBorder} height:31px; text-align:center;"></td>` : ""}
+                <td style="${cellBorder} height:36px; text-align:center;"></td>
+                <td style="${cellBorder} height:36px; text-align:center; font-size:16px;">合&nbsp;&nbsp;&nbsp;&nbsp;计</td>
+                <td style="${cellBorder} height:36px; text-align:center;"></td>
+                <td style="${cellBorder} height:36px; text-align:center;"></td>
+                <td style="${cellBorder} height:36px; text-align:center; font-size:16px;">${totalVal}</td>
+                ${showHandler ? `<td style="${cellBorder} height:36px; text-align:center;"></td>` : ""}
               </tr>
             `;
           }
@@ -2251,12 +2252,12 @@
           for (let b = 0; b < page.blankCount; b++) {
             rowsHtml += `
               <tr>
-                <td style="${cellBorder} height:31px;"></td>
-                <td style="${cellBorder} height:31px;"></td>
-                <td style="${cellBorder} height:31px;"></td>
-                <td style="${cellBorder} height:31px;"></td>
-                <td style="${cellBorder} height:31px;"></td>
-                ${showHandler ? `<td style="${cellBorder} height:31px;"></td>` : ""}
+                <td style="${cellBorder} height:36px;"></td>
+                <td style="${cellBorder} height:36px;"></td>
+                <td style="${cellBorder} height:36px;"></td>
+                <td style="${cellBorder} height:36px;"></td>
+                <td style="${cellBorder} height:36px;"></td>
+                ${showHandler ? `<td style="${cellBorder} height:36px;"></td>` : ""}
               </tr>
             `;
           }
@@ -2271,12 +2272,12 @@
             <table style="width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; border-top:0.5px solid #000; border-left:0.5px solid #000; font-size:15px;">
               <thead>
                 <tr>
-                  <th style="${cellBorder} height:34px; width:9.5%; font-weight:normal; font-size:17px;">日期</th>
-                  <th style="${cellBorder} height:34px; width:${showHandler ? "52.5%" : "64%"}; font-weight:normal; font-size:17px;">内&nbsp;&nbsp;&nbsp;&nbsp;容</th>
-                  <th style="${cellBorder} height:34px; width:9.5%; font-weight:normal; font-size:17px;">数量</th>
-                  <th style="${cellBorder} height:34px; width:8.5%; font-weight:normal; font-size:17px;">单价</th>
-                  <th style="${cellBorder} height:34px; width:8.5%; font-weight:normal; font-size:17px;">金额</th>
-                  ${showHandler ? `<th style="${cellBorder} height:34px; width:11.5%; font-weight:normal; font-size:17px;">经手人</th>` : ""}
+                  <th style="${cellBorder} height:36px; width:9.5%; font-weight:normal; font-size:17px;">日期</th>
+                  <th style="${cellBorder} height:36px; width:${showHandler ? "52.5%" : "64%"}; font-weight:normal; font-size:17px;">内&nbsp;&nbsp;&nbsp;&nbsp;容</th>
+                  <th style="${cellBorder} height:36px; width:9.5%; font-weight:normal; font-size:17px;">数量</th>
+                  <th style="${cellBorder} height:36px; width:8.5%; font-weight:normal; font-size:17px;">单价</th>
+                  <th style="${cellBorder} height:36px; width:8.5%; font-weight:normal; font-size:17px;">金额</th>
+                  ${showHandler ? `<th style="${cellBorder} height:36px; width:11.5%; font-weight:normal; font-size:17px;">经手人</th>` : ""}
                 </tr>
               </thead>
               <tbody>
@@ -2289,7 +2290,7 @@
         });
 
         const opt = {
-          margin: [8, 8, 8, 8],
+          margin: [4, 8, 4, 8],
           filename: fileName,
           image: { type: "png" },
           html2canvas: {
